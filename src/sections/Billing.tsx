@@ -684,12 +684,24 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => duplicate(selected)}><Copy className="w-3 h-3" />Duplicate</Button>
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={() => {
                       const inv = billing.clients.find((c: BillingClient) => c.id === selected.clientId);
-                      const projectSlug = slugify((selected as any).projectName || selected.number);
-                      const clientSlug = slugify(inv?.name || 'client');
-                      const shortId = Math.random().toString(36).slice(2, 7);
-                      const token = projectSlug + '-' + clientSlug + '-' + shortId;
-                      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...selected, approvalToken: token, approvalOpenedCount: 0, updatedAt: new Date().toISOString() } });
-                      setSelected({ ...selected, approvalToken: token, approvalOpenedCount: 0 });
+                      const approvalPayload = {
+                        number: selected.number,
+                        total: selected.total,
+                        currency: selected.currency,
+                        lineItems: (selected.lineItems || []).map((li: any) => ({ description: li.description, total: li.total })),
+                        notes: selected.notes || '',
+                        validUntil: (selected as any).validUntil || '',
+                        projectName: (selected as any).projectName || '',
+                        docStatus: selected.status,
+                        companyName: billing.settings.companyName || '',
+                        companyEmail: billing.settings.email || '',
+                        website: billing.settings.website || '',
+                        tagline: billing.settings.tagline || '',
+                        clientName: inv?.name || 'Client',
+                      };
+                      const encoded = btoa(encodeURIComponent(JSON.stringify(approvalPayload)));
+                      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...selected, approvalToken: encoded, approvalOpenedCount: 0, updatedAt: new Date().toISOString() } });
+                      setSelected({ ...selected, approvalToken: encoded, approvalOpenedCount: 0 });
                       toast({ title: '✓ Approval link generated' });
                     }}>
                     <Link className="w-3 h-3" />Generate Approval Link
@@ -939,12 +951,24 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => duplicate(selected)}><Copy className="w-3 h-3" />Duplicate</Button>
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={() => {
                       const inv = billing.clients.find((c: BillingClient) => c.id === selected.clientId);
-                      const projectSlug = slugify((selected as any).projectName || selected.number);
-                      const clientSlug = slugify(inv?.name || 'client');
-                      const shortId = Math.random().toString(36).slice(2, 7);
-                      const token = projectSlug + '-' + clientSlug + '-' + shortId;
-                      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...selected, approvalToken: token, approvalOpenedCount: 0, updatedAt: new Date().toISOString() } });
-                      setSelected({ ...selected, approvalToken: token, approvalOpenedCount: 0 });
+                      const approvalPayload = {
+                        number: selected.number,
+                        total: selected.total,
+                        currency: selected.currency,
+                        lineItems: (selected.lineItems || []).map((li: any) => ({ description: li.description, total: li.total })),
+                        notes: selected.notes || '',
+                        validUntil: (selected as any).validUntil || '',
+                        projectName: (selected as any).projectName || '',
+                        docStatus: selected.status,
+                        companyName: billing.settings.companyName || '',
+                        companyEmail: billing.settings.email || '',
+                        website: billing.settings.website || '',
+                        tagline: billing.settings.tagline || '',
+                        clientName: inv?.name || 'Client',
+                      };
+                      const encoded = btoa(encodeURIComponent(JSON.stringify(approvalPayload)));
+                      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...selected, approvalToken: encoded, approvalOpenedCount: 0, updatedAt: new Date().toISOString() } });
+                      setSelected({ ...selected, approvalToken: encoded, approvalOpenedCount: 0 });
                       toast({ title: '✓ Approval link generated' });
                     }}>
                     <Link className="w-3 h-3" />Generate Approval Link

@@ -20,35 +20,52 @@ function ApprovalPage({ token }: { token: string }) {
   const { state, dispatch } = useApp();
   const [status, setStatus] = useState<'pending' | 'approved' | 'declined'>('pending');
 
-  const doc = state.billing.documents.find(
-    (d: BillingDocument) => d.approvalToken === token
-  );
-  const client = doc ? state.billing.clients.find(c => c.id === doc.clientId) : null;
-  const settings = state.billing.settings;
+  // ── Decode self-contained base64 payload (works in any browser / any device) ──
+  let payload: any = null;
+  try { payload = JSON.parse(decodeURIComponent(atob(token))); } catch {}
 
+  // ── Fallback: local state lookup for old-style token links (same browser only) ──
+  const docFromState = !payload
+    ? state.billing.documents.find((d: BillingDocument) => d.approvalToken === token)
+    : undefined;
+
+  const settings = payload
+    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: undefined as string | undefined }
+    : state.billing.settings;
+
+  const doc: any = payload
+    ? { number: payload.number, total: payload.total, currency: payload.currency, lineItems: payload.lineItems || [], notes: payload.notes, validUntil: payload.validUntil, projectName: payload.projectName, status: payload.docStatus, payments: [] }
+    : docFromState;
+
+  const clientName = payload
+    ? payload.clientName
+    : (state.billing.clients.find((c: any) => c.id === docFromState?.clientId)?.name || 'Client');
+
+  // Track open count — only meaningful in same-browser context
   useEffect(() => {
-    if (doc && (doc.approvalOpenedCount === 0 || doc.approvalOpenedCount === undefined)) {
-      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...doc, approvalOpenedCount: (doc.approvalOpenedCount || 0) + 1, updatedAt: new Date().toISOString() } });
+    if (docFromState && (docFromState.approvalOpenedCount === 0 || docFromState.approvalOpenedCount === undefined)) {
+      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...docFromState, approvalOpenedCount: (docFromState.approvalOpenedCount || 0) + 1, updatedAt: new Date().toISOString() } });
     }
   }, []);
 
   const respond = (action: 'approved' | 'declined') => {
     if (!doc) return;
-    dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...doc, status: action === 'approved' ? 'accepted' : 'rejected', updatedAt: new Date().toISOString() } });
+    // Update local state only when running in the same browser (owner testing the link)
+    if (docFromState) {
+      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...docFromState, status: action === 'approved' ? 'accepted' : 'rejected', updatedAt: new Date().toISOString() } });
+    }
     setStatus(action);
-    // Open mailto to notify InspireX
     const subject = encodeURIComponent((action === 'approved' ? 'Quote Approved — ' : 'Quote Declined — ') + doc.number);
     const body = encodeURIComponent(
       'Hi ' + settings.companyName + ',\n\n' +
       (action === 'approved'
         ? 'I am pleased to confirm that I approve Quote ' + doc.number + ' for the amount of ' + doc.total.toLocaleString() + ' ' + doc.currency + '.\n\nPlease proceed with the project.'
         : 'After consideration, I have decided to decline Quote ' + doc.number + '.\n\nThank you for the proposal.') +
-      '\n\nRegards,\n' + (client?.name || 'Client')
+      '\n\nRegards,\n' + clientName
     );
     window.open('mailto:' + settings.email + '?subject=' + subject + '&body=' + body);
   };
 
-  // Set page title to company name dynamically
   useEffect(() => {
     document.title = settings.companyName || 'InspireX Studio Lab';
     return () => { document.title = 'InspireX Studio Lab'; };
