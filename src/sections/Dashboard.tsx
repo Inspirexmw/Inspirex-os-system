@@ -45,12 +45,12 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
           .filter((p: any) => p.date?.startsWith(currentMonth))
           .reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0), 0);
 
-    // Outstanding = unpaid invoice balances across all time
+    // Outstanding = unpaid invoice balances across all time (in MWK equivalent)
     const totalOutstandingFromBilling = billingInvoices
       .filter((inv: any) => inv.status !== 'paid')
       .reduce((sum: number, inv: any) => {
-        const paid = inv.payments.reduce((ps: number, p: any) => ps + p.amount, 0);
-        return sum + Math.max(0, inv.total - paid);
+        const paid = inv.payments.reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0);
+        return sum + Math.max(0, inv.total * (inv.exchangeRate || 1) - paid);
       }, 0);
 
     // Project-level metrics still from Calculator (projected figures)
@@ -272,7 +272,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
   }, 0);
   const totalOutstanding = unpaidInvoices.reduce((s, inv) => {
     const paid = inv.payments.reduce((ps, p) => ps + p.mwkEquivalent, 0);
-    return s + Math.max(0, inv.total - paid);
+    return s + Math.max(0, inv.total * ((inv as any).exchangeRate || 1) - paid);
   }, 0);
 
   return (

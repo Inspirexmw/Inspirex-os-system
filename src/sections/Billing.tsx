@@ -753,8 +753,8 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
   const avatarColor = (id: string) => avatarColors[id?.charCodeAt(0) % avatarColors.length] || avatarColors[0];
 
   const thisMonth = new Date().toISOString().slice(0,7);
-  const totalOutstanding = invoices.filter((i: BillingDocument) => i.status !== 'paid').reduce((s: number, i: BillingDocument) => s + Math.max(0, i.total - i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0)), 0);
-  const totalOverdue = invoices.filter((i: BillingDocument) => isOverdue(i)).reduce((s: number, i: BillingDocument) => s + Math.max(0, i.total - i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0)), 0);
+  const totalOutstanding = invoices.filter((i: BillingDocument) => i.status !== 'paid').reduce((s: number, i: BillingDocument) => s + Math.max(0, i.total * (i.exchangeRate || 1) - i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0)), 0);
+  const totalOverdue = invoices.filter((i: BillingDocument) => isOverdue(i)).reduce((s: number, i: BillingDocument) => s + Math.max(0, i.total * (i.exchangeRate || 1) - i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0)), 0);
   const collectedMonth = invoices.reduce((s: number, i: BillingDocument) => s + i.payments.filter((p: BillingPayment) => p.date.startsWith(thisMonth)).reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
   const paidInvoices = invoices.filter((i: BillingDocument) => i.status === 'paid' && i.payments.length > 0);
   const avgDaysToPay = paidInvoices.length === 0 ? null : Math.round(
@@ -787,7 +787,7 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
     dispatch({ type: 'BILLING_ADD_PAYMENT', payload: { documentId: payingInvoice.id, payment } });
     const allPayments = [...payingInvoice.payments, payment];
     const totalPaidNow = allPayments.reduce((s: number, p: BillingPayment) => s + p.mwkEquivalent, 0);
-    const isFullyPaid = totalPaidNow >= payingInvoice.total;
+    const isFullyPaid = totalPaidNow >= payingInvoice.total * (payingInvoice.exchangeRate || 1);
     const paymentStatus = isFullyPaid ? 'Paid in full' : 'Partial payment';
 
     // ── Auto WC inflow ──
@@ -2683,7 +2683,7 @@ function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
     dispatch({ type: 'BILLING_ADD_PAYMENT', payload: { documentId: payingInvoice.id, payment } });
     const allPayments = [...payingInvoice.payments, payment];
     const totalPaidNow = allPayments.reduce((s: number, p: BillingPayment) => s + p.mwkEquivalent, 0);
-    const isFullyPaid = totalPaidNow >= payingInvoice.total;
+    const isFullyPaid = totalPaidNow >= payingInvoice.total * (payingInvoice.exchangeRate || 1);
     const paymentStatus = isFullyPaid ? 'Paid in full' : 'Partial payment';
 
     // ── Auto WC inflow ──
@@ -3089,7 +3089,7 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
   const totalReceived   = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
   const totalOutstanding = periodInvoices.reduce((s: number, i: BillingDocument) => {
     const paid = i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0);
-    return s + Math.max(0, i.total - paid);
+    return s + Math.max(0, i.total * (i.exchangeRate || 1) - paid);
   }, 0);
   const totalProjectCosts = periodExpenses.reduce((s: number, e: any) => s + e.amount, 0);
   const totalExpenses   = totalProjectCosts + periodOverhead;
