@@ -772,7 +772,7 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
     const payment: BillingPayment = { id: genId(), date: payForm.date, amount, currency: payForm.currency, mwkEquivalent: payForm.currency === 'MWK' ? amount : Math.round(amount * rate), exchangeRate: rate, method: payForm.method, reference: payForm.reference || undefined };
     dispatch({ type: 'BILLING_ADD_PAYMENT', payload: { documentId: payingInvoice.id, payment } });
     const allPayments = [...payingInvoice.payments, payment];
-    const totalPaidNow = allPayments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+    const totalPaidNow = allPayments.reduce((s: number, p: BillingPayment) => s + p.mwkEquivalent, 0);
     const isFullyPaid = totalPaidNow >= payingInvoice.total;
     const paymentStatus = isFullyPaid ? 'Paid in full' : 'Partial payment';
 
@@ -790,12 +790,12 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
         paidAmount: newPaid,
         status: newPaid >= linkedProject.revenue ? 'confirmed' : 'partial',
       }});
-      // Calculate company fund (60%) portion of this payment net of costs
-      const costsRatio = linkedProject.revenue > 0 ? (linkedProject.directExpenses || 0) / linkedProject.revenue : 0;
-      const netPortion = payment.mwkEquivalent * (1 - costsRatio);
-      const companyPortion = Math.round(netPortion * (state.settings?.revenueSplit?.companyPercent ?? 60) / 100);
-      if (companyPortion > 0) {
-        dispatch({ type: 'ADD_RETAINED_PROFIT', payload: companyPortion });
+      // Add company contribution to retained profit only once when fully paid for the first time
+      if (isFullyPaid && linkedProject.paymentStatus !== 'confirmed') {
+        const companyPortion = linkedProject.companyContribution || 0;
+        if (companyPortion > 0) {
+          dispatch({ type: 'ADD_RETAINED_PROFIT', payload: companyPortion });
+        }
       }
     }
 
@@ -2671,7 +2671,7 @@ function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
     const payment: BillingPayment = { id: genId(), date: payForm.date, amount, currency: payForm.currency, mwkEquivalent: payForm.currency === 'MWK' ? amount : Math.round(amount * rate), exchangeRate: rate, method: payForm.method, reference: payForm.reference || undefined };
     dispatch({ type: 'BILLING_ADD_PAYMENT', payload: { documentId: payingInvoice.id, payment } });
     const allPayments = [...payingInvoice.payments, payment];
-    const totalPaidNow = allPayments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+    const totalPaidNow = allPayments.reduce((s: number, p: BillingPayment) => s + p.mwkEquivalent, 0);
     const isFullyPaid = totalPaidNow >= payingInvoice.total;
     const paymentStatus = isFullyPaid ? 'Paid in full' : 'Partial payment';
 
@@ -3077,7 +3077,7 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
   const totalTax        = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.taxAmount, 0);
   const totalReceived   = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
   const totalOutstanding = periodInvoices.reduce((s: number, i: BillingDocument) => {
-    const paid = i.payments.reduce((ps: number, p: BillingPayment) => ps + p.amount, 0);
+    const paid = i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0);
     return s + Math.max(0, i.total - paid);
   }, 0);
   const totalProjectCosts = periodExpenses.reduce((s: number, e: any) => s + e.amount, 0);
