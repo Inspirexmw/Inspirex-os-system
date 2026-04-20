@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar, NotificationPanel } from '@/components/Sidebar';
 import { Dashboard } from '@/sections/Dashboard';
 import { ProjectCalculator } from '@/sections/ProjectCalculator';
 import { WorkLog } from '@/sections/WorkLog';
@@ -232,12 +232,19 @@ function AppContent() {
         billingView={billingView}
         onBillingViewChange={setBillingView}
       />
-      <main 
+      {/* Fixed top bar */}
+      <div
+        className="fixed top-0 right-0 z-40 h-12 bg-card border-b border-border flex items-center justify-end px-4 gap-3 transition-all duration-300"
+        style={{ left: sidebarCollapsed ? '4rem' : '16rem' }}
+      >
+        <NotificationPanel collapsed={false} />
+      </div>
+      <main
         className={`transition-all duration-300 min-h-screen ${
           sidebarCollapsed ? 'ml-16' : 'ml-64'
         }`}
       >
-        <div className="p-6 max-w-6xl mx-auto pb-24">
+        <div className="p-6 max-w-6xl mx-auto pt-16 pb-24">
           {renderView()}
         </div>
       </main>
