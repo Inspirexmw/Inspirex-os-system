@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 import { useApp } from '@/hooks/useAppState';
 import type { ViewType } from '@/types';
 import type { BillingView } from '@/sections/Billing';
@@ -90,17 +89,27 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo */}
+      {/* Logo + collapse button */}
       <div className="p-4 border-b border-border">
         <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
             <span className="text-primary-foreground font-bold text-sm">IX</span>
           </div>
           {!collapsed && (
-            <div className="overflow-hidden">
-              <div className="font-semibold text-foreground text-sm tracking-wide">INSPIREX</div>
-              <div className="text-xs text-muted-foreground">OS v2.0</div>
-            </div>
+            <>
+              <div className="overflow-hidden flex-1">
+                <div className="font-semibold text-foreground text-sm tracking-wide">INSPIREX</div>
+                <div className="text-xs text-muted-foreground">OS v2.0</div>
+              </div>
+              <button onClick={onToggleCollapse} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0" title="Collapse sidebar">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          {collapsed && (
+            <button onClick={onToggleCollapse} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors" title="Expand sidebar">
+              <ChevronRight className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
@@ -224,32 +233,16 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
         ))}
       </nav>
 
-      {/* Bell icon + Notification Panel */}
-      <NotificationPanel collapsed={collapsed} />
-
       {/* Footer */}
-      <div className="p-4 border-t border-border">
-        {!collapsed && (
+      {!collapsed && (
+        <div className="p-4 border-t border-border">
           <div className="text-[10px] text-muted-foreground space-y-1">
             <div>{state.settings.companyName}</div>
             <div>{state.settings.revenueSplit.companyPercent}/{state.settings.revenueSplit.bonusPercent} model</div>
             {state.settings.autoSave && <div className="text-[9px] opacity-60">Auto-save enabled</div>}
           </div>
-        )}
-        
-        {/* Collapse toggle */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleCollapse}
-          className={cn(
-            "mt-2 w-full flex items-center justify-center",
-            collapsed && "mt-0"
-          )}
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4 mr-1" /> Collapse</>}
-        </Button>
-      </div>
+        </div>
+      )}
     </aside>
   );
 }
@@ -257,7 +250,7 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
 
 // ─── Notification Panel ────────────────────────────────────────────────────────
 
-function NotificationPanel({ collapsed }: { collapsed: boolean }) {
+export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
   const { state, dispatch } = useApp();
   const [open, setOpen] = useState(false);
 
