@@ -149,7 +149,7 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
   const collectedThisMonth = invoices.reduce((s: number, i: BillingDocument) =>
     s + i.payments.filter((p: BillingPayment) => p.date.startsWith(thisMonth)).reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
   const totalOutstanding = unpaid.reduce((s: number, i: BillingDocument) =>
-    s + Math.max(0, i.total - i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0)), 0);
+    s + Math.max(0, i.total * (i.exchangeRate || 1) - i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0)), 0);
   const pendingQuotes = quotes.filter((q: BillingDocument) => q.status === 'sent');
 
   // Reminder groups
@@ -1012,6 +1012,7 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
   const [notes, setNotes] = useState(ed?.notes || (type === 'quote' ? billing.settings.quoteNotes : billing.settings.invoiceNotes));
   const [depositPercent, setDepositPercent] = useState<number>(ed?.depositPercent ?? 50);
   const [items, setItems] = useState<LineItem[]>(ed?.lineItems || [{ id: genId(), description: '', qty: 1, unitPrice: 0, total: 0 }]);
+  const [exchangeRate, setExchangeRate] = useState<number>(ed?.exchangeRate ?? 1);
 
   const updateItem = (id: string, field: keyof LineItem, value: any) => {
     setItems(prev => prev.map(item => {
@@ -1040,6 +1041,7 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
       number,
       clientId,
       currency,
+      exchangeRate: currency === 'MWK' ? 1 : exchangeRate,
       lineItems: items.filter(i => i.description.trim()),
       subtotal, taxRate, taxAmount, discount, total,
       status,
@@ -1092,11 +1094,17 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Currency</Label>
-            <Select value={currency} onValueChange={v => setCurrency(v as BillingCurrency)}>
+            <Select value={currency} onValueChange={v => { setCurrency(v as BillingCurrency); if (v === 'MWK') setExchangeRate(1); }}>
               <SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-card border-border">{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          {currency !== 'MWK' && (
+            <div className="space-y-1">
+              <Label className="text-xs">Rate to MWK <span className="text-muted-foreground font-normal">(1 {currency} = ? MWK)</span></Label>
+              <Input type="number" min="0.01" step="any" value={exchangeRate} onChange={e => setExchangeRate(parseFloat(e.target.value) || 1)} className="bg-secondary border-input h-8 text-sm" />
+            </div>
+          )}
           <div className="space-y-1"><Label className="text-xs">Issue Date</Label><Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className="bg-secondary border-input h-8 text-sm" /></div>
           {docType === 'invoice' && <div className="space-y-1"><Label className="text-xs">Due Date</Label><Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="bg-secondary border-input h-8 text-sm" /></div>}
           {docType !== 'invoice' && <div className="space-y-1"><Label className="text-xs">Valid Until</Label><Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className="bg-secondary border-input h-8 text-sm" /></div>}
@@ -1136,6 +1144,12 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
           <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Tax %</span><Input type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value)||0)} className="bg-secondary border-input h-7 w-20 text-sm text-right" /></div>
           <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Discount</span><Input type="number" value={discount} onChange={e => setDiscount(parseFloat(e.target.value)||0)} className="bg-secondary border-input h-7 w-24 text-sm text-right" /></div>
           <div className="flex justify-between text-base font-semibold border-t border-border pt-2"><span>Total</span><span className="text-primary">{fmtAmt(total, currency)}</span></div>
+          {currency !== 'MWK' && (
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>≈ MWK equivalent</span>
+              <span className="text-foreground font-medium">MK {Math.round(total * exchangeRate).toLocaleString()}</span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-1">
