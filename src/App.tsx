@@ -8,6 +8,7 @@ import { MonthlySummary } from '@/sections/MonthlySummary';
 import { TeamManagement } from '@/sections/TeamManagement';
 import { Settings } from '@/sections/Settings';
 import { Billing } from '@/sections/Billing';
+import type { BillingView } from '@/sections/Billing';
 import { WorkingCapital } from '@/sections/WorkingCapital';
 import { AppProvider, useApp } from '@/hooks/useAppState';
 import { Toaster } from '@/components/ui/sonner';
@@ -175,6 +176,7 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [billingView, setBillingView] = useState<BillingView>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { state } = useApp();
 
@@ -214,7 +216,7 @@ function AppContent() {
       case 'settings':
         return <Settings />;
       case 'billing':
-        return <Billing />;
+        return <Billing view={billingView} onViewChange={setBillingView} />;
       default:
         return <Dashboard onViewChange={setCurrentView} />;
     }
@@ -222,11 +224,13 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Sidebar 
-        currentView={currentView} 
+      <Sidebar
+        currentView={currentView}
         onViewChange={setCurrentView}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        billingView={billingView}
+        onBillingViewChange={setBillingView}
       />
       <main 
         className={`transition-all duration-300 min-h-screen ${

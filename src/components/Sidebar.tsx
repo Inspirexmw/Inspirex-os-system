@@ -23,12 +23,15 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/hooks/useAppState';
 import type { ViewType } from '@/types';
+import type { BillingView } from '@/sections/Billing';
 
 interface SidebarProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  billingView: BillingView;
+  onBillingViewChange: (v: BillingView) => void;
 }
 
 interface NavItem {
@@ -50,7 +53,20 @@ const navItems: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: Settings, section: 'Settings' },
 ];
 
-export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse }: SidebarProps) {
+const BILLING_SUB_NAV: { id: BillingView; label: string; group: 'Sales' | 'Finance' | 'Other' }[] = [
+  { id: 'overview',      label: 'Overview',      group: 'Other' },
+  { id: 'clients',       label: 'Clients',       group: 'Sales' },
+  { id: 'quotes',        label: 'Quotes',        group: 'Sales' },
+  { id: 'invoices',      label: 'Invoices',      group: 'Sales' },
+  { id: 'receipts',      label: 'Receipts',      group: 'Sales' },
+  { id: 'expenses',      label: 'Project Costs', group: 'Finance' },
+  { id: 'retainer',      label: 'Retainers',     group: 'Finance' },
+  { id: 'recurring',     label: 'Recurring',     group: 'Finance' },
+  { id: 'tax',           label: 'Tax Report',    group: 'Finance' },
+  { id: 'bill-settings', label: 'Settings',      group: 'Other' },
+];
+
+export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse, billingView, onBillingViewChange }: SidebarProps) {
   const { state, formatCurrency, getActiveMembers, getTotalDeferredStipends } = useApp();
   
   const activeMembers = getActiveMembers();
@@ -132,24 +148,76 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
             {items.map(item => {
               const Icon = item.icon;
               const isActive = currentView === item.id;
-              
+              const isBilling = item.id === 'billing';
+
               return (
-                <button
-                  key={item.id}
-                  onClick={() => onViewChange(item.id)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-200",
-                    "hover:bg-secondary/50",
-                    isActive 
-                      ? "bg-primary/10 text-primary border-l-2 border-primary" 
-                      : "text-muted-foreground border-l-2 border-transparent",
-                    collapsed && "justify-center px-2"
+                <div key={item.id}>
+                  <button
+                    onClick={() => onViewChange(item.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-200",
+                      "hover:bg-secondary/50",
+                      isActive
+                        ? "bg-primary/10 text-primary border-l-2 border-primary"
+                        : "text-muted-foreground border-l-2 border-transparent",
+                      collapsed && "justify-center px-2"
+                    )}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <Icon className={cn("w-4 h-4 flex-shrink-0", isActive && "text-primary")} />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </button>
+
+                  {/* Billing sub-nav — shown when billing is active and sidebar is expanded */}
+                  {isBilling && isActive && !collapsed && (
+                    <div className="ml-4 border-l border-border pl-2 mt-0.5 mb-1 space-y-0.5">
+                      {/* Overview */}
+                      {BILLING_SUB_NAV.filter(s => s.group === 'Other' && s.id === 'overview').map(s => (
+                        <button key={s.id} onClick={() => onBillingViewChange(s.id)}
+                          className={cn(
+                            "w-full text-left px-2 py-1.5 text-xs rounded transition-colors",
+                            billingView === s.id ? "text-primary font-medium bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                          )}>
+                          {s.label}
+                        </button>
+                      ))}
+                      {/* Sales group */}
+                      <div className="pt-1 pb-0.5 px-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40">Sales</div>
+                      {BILLING_SUB_NAV.filter(s => s.group === 'Sales').map(s => (
+                        <button key={s.id} onClick={() => onBillingViewChange(s.id)}
+                          className={cn(
+                            "w-full text-left px-2 py-1.5 text-xs rounded transition-colors",
+                            billingView === s.id ? "text-primary font-medium bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                          )}>
+                          {s.label}
+                        </button>
+                      ))}
+                      {/* Finance group */}
+                      <div className="pt-1 pb-0.5 px-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40">Finance</div>
+                      {BILLING_SUB_NAV.filter(s => s.group === 'Finance').map(s => (
+                        <button key={s.id} onClick={() => onBillingViewChange(s.id)}
+                          className={cn(
+                            "w-full text-left px-2 py-1.5 text-xs rounded transition-colors",
+                            billingView === s.id ? "text-primary font-medium bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                          )}>
+                          {s.label}
+                        </button>
+                      ))}
+                      {/* Settings */}
+                      <div className="border-t border-border mt-1 pt-1">
+                        {BILLING_SUB_NAV.filter(s => s.id === 'bill-settings').map(s => (
+                          <button key={s.id} onClick={() => onBillingViewChange(s.id)}
+                            className={cn(
+                              "w-full text-left px-2 py-1.5 text-xs rounded transition-colors",
+                              billingView === s.id ? "text-primary font-medium bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                            )}>
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <Icon className={cn("w-4 h-4 flex-shrink-0", isActive && "text-primary")} />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </button>
+                </div>
               );
             })}
           </div>
