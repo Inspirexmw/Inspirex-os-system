@@ -561,7 +561,7 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
                           <div>
                             <div className="font-medium text-sm">{c.name}</div>
                             {stats.invoiceCount > 0 && (
-                              <div className="text-[10px] text-muted-foreground">{stats.invoiceCount} invoice{stats.invoiceCount !== 1 ? 's' : ''}</div>
+                              <div className="text-[10px] text-muted-foreground">{stats.invoiceCount}</div>
                             )}
                           </div>
                         </div>
