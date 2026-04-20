@@ -1,10 +1,10 @@
-import React, { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import {
-  Plus, FileText, Users, Settings, LayoutDashboard,
+  Plus, FileText,
   ChevronRight, Trash2, Edit2, Check, X, Send,
   DollarSign, AlertTriangle, Clock, CheckCircle, Copy, Mail,
-  Upload, Image, Eye, TrendingDown, BarChart2, RefreshCw, Link,
+  Upload, Image, Eye, RefreshCw, Link,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import type {
   LineItem, BillingPayment, BillingSettings, Expense, ExpenseCategory, RecurringSchedule, RecurringFrequency,
 } from '@/types';
 
-type BillingView = 'overview' | 'clients' | 'quotes' | 'invoices' | 'receipts' | 'expenses' | 'retainer' | 'recurring' | 'tax' | 'bill-settings';
+export type BillingView = 'overview' | 'clients' | 'quotes' | 'invoices' | 'receipts' | 'expenses' | 'retainer' | 'recurring' | 'tax' | 'bill-settings';
 type DocType = 'quote' | 'invoice' | 'proforma';
 
 const CURRENCIES: BillingCurrency[] = ['MWK', 'USD', 'ZAR'];
@@ -77,10 +77,14 @@ const fmtDateFull = (d: string) => {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function Billing() {
+interface BillingProps {
+  view: BillingView;
+  onViewChange: (v: BillingView) => void;
+}
+
+export function Billing({ view, onViewChange: setView }: BillingProps) {
   const { state, dispatch } = useApp();
   const { toast } = useToast();
-  const [view, setView] = useState<BillingView>('overview');
   const [previewDoc, setPreviewDoc] = useState<{ doc: BillingDocument; client: BillingClient | undefined } | null>(null);
   const billing = state.billing;
   const quotes   = billing.documents.filter(d => d.type === 'quote' || d.type === 'proforma');
@@ -94,21 +98,6 @@ export function Billing() {
     setPreviewDoc({ doc, client });
   };
 
-  const navItem = (id: BillingView, label: string, Icon: React.ElementType, badge?: { count: number; color: string }) => (
-    <button key={id} onClick={() => setView(id)}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-        view === id
-          ? 'bg-primary/10 text-primary font-medium border-l-2 border-primary'
-          : 'text-muted-foreground hover:text-foreground hover:bg-secondary/40'
-      }`}>
-      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-      <span className="flex-1 text-left">{label}</span>
-      {badge && badge.count > 0 && (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${badge.color}`}>{badge.count}</span>
-      )}
-    </button>
-  );
-
   return (
     <div className="animate-fadeIn space-y-4">
       <div>
@@ -116,68 +105,37 @@ export function Billing() {
         <p className="text-muted-foreground text-sm mt-1">Quotes, invoices and client records</p>
       </div>
 
-      <div className="flex gap-6 items-start">
-        {/* ── Left sidebar ── */}
-        <div className="w-44 flex-shrink-0 space-y-0.5">
-          {navItem('overview', 'Overview', LayoutDashboard)}
-
-          <div className="pt-4 pb-1 px-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">Sales</span>
-          </div>
-          {navItem('clients',  'Clients',  Users)}
-          {navItem('quotes',   'Quotes',   FileText)}
-          {navItem('invoices', 'Invoices', DollarSign)}
-          {navItem('receipts', 'Receipts', CheckCircle, { count: receipts.length, color: 'bg-primary/20 text-primary' })}
-
-          <div className="pt-4 pb-1 px-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">Finance</span>
-          </div>
-          {navItem('expenses',  'Project Costs', TrendingDown, { count: expenses.length, color: 'bg-amber-500/20 text-amber-400' })}
-          {navItem('retainer',  'Retainers',     DollarSign)}
-          {navItem('recurring', 'Recurring',      RefreshCw)}
-          {navItem('tax',       'Tax Report',     BarChart2)}
-
-          <div className="pt-4">
-            <div className="border-t border-border mb-2" />
-            {navItem('bill-settings', 'Settings', Settings)}
-          </div>
-        </div>
-
-        {/* ── Main content ── */}
-        <div className="flex-1 min-w-0">
-          {/* Preview Modal */}
-          {previewDoc && (
-            <div className="fixed inset-0 z-50 bg-black/80 flex items-start justify-center overflow-y-auto p-4" onClick={() => setPreviewDoc(null)}>
-              <div className="relative w-full max-w-2xl" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-medium text-white">{previewDoc.doc.number} — Preview</div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { generatePDF(previewDoc.doc, previewDoc.client, billing.settings); }}
-                      className="px-3 py-1.5 bg-primary text-black text-xs font-medium rounded-md hover:bg-primary/90">
-                      Download PDF
-                    </button>
-                    <button onClick={() => setPreviewDoc(null)} className="p-1.5 text-white/60 hover:text-white">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <DocumentPreview doc={previewDoc.doc} client={previewDoc.client} settings={billing.settings} />
+      {/* Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-start justify-center overflow-y-auto p-4" onClick={() => setPreviewDoc(null)}>
+          <div className="relative w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-white">{previewDoc.doc.number} — Preview</div>
+              <div className="flex gap-2">
+                <button onClick={() => { generatePDF(previewDoc.doc, previewDoc.client, billing.settings); }}
+                  className="px-3 py-1.5 bg-primary text-black text-xs font-medium rounded-md hover:bg-primary/90">
+                  Download PDF
+                </button>
+                <button onClick={() => setPreviewDoc(null)} className="p-1.5 text-white/60 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
-          )}
-
-          {view === 'overview'      && <BillingOverview quotes={quotes} invoices={invoices} clients={billing.clients} billing={billing} setView={setView} />}
-          {view === 'clients'       && <ClientsView clients={billing.clients} documents={billing.documents} dispatch={dispatch} toast={toast} />}
-          {view === 'quotes'        && <QuotesView quotes={quotes} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} setView={setView} openPreview={openPreview} />}
-          {view === 'invoices'      && <InvoicesView invoices={invoices} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
-          {view === 'receipts'      && <ReceiptsView receipts={receipts} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
-          {view === 'expenses'      && <ExpensesView expenses={expenses} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} />}
-          {view === 'retainer'      && <RetainerView invoices={invoices} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} />}
-          {view === 'recurring'     && <RecurringView schedules={recurringSchedules} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} />}
-          {view === 'tax'           && <TaxReportView invoices={invoices} clients={billing.clients} billing={{ ...billing, wcTransactions: state.wcTransactions || [] }} expenses={expenses} />}
-          {view === 'bill-settings' && <BillSettingsView settings={billing.settings} dispatch={dispatch} toast={toast} />}
+            <DocumentPreview doc={previewDoc.doc} client={previewDoc.client} settings={billing.settings} />
+          </div>
         </div>
-      </div>
+      )}
+
+      {view === 'overview'      && <BillingOverview quotes={quotes} invoices={invoices} clients={billing.clients} billing={billing} setView={setView} />}
+      {view === 'clients'       && <ClientsView clients={billing.clients} documents={billing.documents} dispatch={dispatch} toast={toast} />}
+      {view === 'quotes'        && <QuotesView quotes={quotes} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} setView={setView} openPreview={openPreview} />}
+      {view === 'invoices'      && <InvoicesView invoices={invoices} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
+      {view === 'receipts'      && <ReceiptsView receipts={receipts} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
+      {view === 'expenses'      && <ExpensesView expenses={expenses} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} />}
+      {view === 'retainer'      && <RetainerView invoices={invoices} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} />}
+      {view === 'recurring'     && <RecurringView schedules={recurringSchedules} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} />}
+      {view === 'tax'           && <TaxReportView invoices={invoices} clients={billing.clients} billing={{ ...billing, wcTransactions: state.wcTransactions || [] }} expenses={expenses} />}
+      {view === 'bill-settings' && <BillSettingsView settings={billing.settings} dispatch={dispatch} toast={toast} />}
     </div>
   );
 }
