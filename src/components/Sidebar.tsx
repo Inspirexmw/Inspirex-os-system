@@ -173,7 +173,7 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
                       }
                     }}
                     className={cn(
-                      "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-200",
+                      "w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-all duration-200",
                       "hover:bg-secondary/50",
                       isActive
                         ? "bg-primary/10 text-primary border-l-2 border-primary"
