@@ -550,6 +550,7 @@ export interface BillingDocument {
   clientId: string;
   projectId?: string;
   currency: BillingCurrency;
+  exchangeRate: number;           // rate to MWK (1 for MWK documents)
   lineItems: LineItem[];
   subtotal: number;
   taxRate: number;
