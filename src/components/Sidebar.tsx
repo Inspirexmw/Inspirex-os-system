@@ -9,6 +9,7 @@ import {
   Wallet,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Receipt,
   Bell,
   X,
@@ -67,7 +68,8 @@ const BILLING_SUB_NAV: { id: BillingView; label: string; group: 'Sales' | 'Finan
 
 export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse, billingView, onBillingViewChange }: SidebarProps) {
   const { state, formatCurrency, getActiveMembers, getTotalDeferredStipends } = useApp();
-  
+  const [billingOpen, setBillingOpen] = useState(true);
+
   const activeMembers = getActiveMembers();
   
   // Calculate stats
@@ -162,7 +164,14 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
               return (
                 <div key={item.id}>
                   <button
-                    onClick={() => onViewChange(item.id)}
+                    onClick={() => {
+                      if (isBilling && isActive) {
+                        setBillingOpen(o => !o);
+                      } else {
+                        onViewChange(item.id);
+                        if (isBilling) setBillingOpen(true);
+                      }
+                    }}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-all duration-200",
                       "hover:bg-secondary/50",
@@ -174,11 +183,17 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
                     title={collapsed ? item.label : undefined}
                   >
                     <Icon className={cn("w-4 h-4 flex-shrink-0", isActive && "text-primary")} />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+                    {!collapsed && isBilling && (
+                      <ChevronDown className={cn(
+                        "w-3 h-3 flex-shrink-0 transition-transform duration-200",
+                        billingOpen && isActive ? "rotate-180" : ""
+                      )} />
+                    )}
                   </button>
 
-                  {/* Billing sub-nav — shown when billing is active and sidebar is expanded */}
-                  {isBilling && isActive && !collapsed && (
+                  {/* Billing sub-nav — shown when billing is active, expanded, and open */}
+                  {isBilling && isActive && !collapsed && billingOpen && (
                     <div className="ml-4 border-l border-border pl-2 mt-0.5 mb-1 space-y-0.5">
                       {/* Overview */}
                       {BILLING_SUB_NAV.filter(s => s.group === 'Other' && s.id === 'overview').map(s => (
