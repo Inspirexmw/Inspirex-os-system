@@ -122,7 +122,7 @@ export function Billing() {
           {navItem('overview', 'Overview', LayoutDashboard)}
 
           <div className="pt-4 pb-1 px-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">Documents</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">Sales</span>
           </div>
           {navItem('clients',  'Clients',  Users)}
           {navItem('quotes',   'Quotes',   FileText)}
