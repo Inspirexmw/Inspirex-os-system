@@ -86,8 +86,8 @@ export function ProjectCalculator() {
     const rev = parseFloat(revenue) || 0;
     const exp = parseFloat(directExpenses) || 0;
     const grossProfit = Math.max(0, rev - exp);
-    const bonusPool = grossProfit * (revenueSplit.bonusPercent / 100);
-    const companyContribution = grossProfit * (revenueSplit.companyPercent / 100);
+    const bonusPool = grossProfit * ((revenueSplit.bonusPercent ?? 40) / 100);
+    const companyContribution = grossProfit * ((revenueSplit.companyPercent ?? 60) / 100);
     return { rev, exp, grossProfit, bonusPool, companyContribution };
   }, [revenue, directExpenses, revenueSplit, isClient]);
 

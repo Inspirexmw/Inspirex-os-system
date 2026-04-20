@@ -285,10 +285,14 @@ function appReducer(state: AppState, action: Action): AppState {
       const isFromProfit = action.payload.category === 'profit_to_wc_operations' ||
                            action.payload.category === 'profit_to_wc_capital';
       const isToRetained = action.payload.category === 'client_to_retained';
+      const newBalance = action.payload.type === 'inflow'
+        ? state.wcBalance + action.payload.amount
+        : state.wcBalance - action.payload.amount;
+      const updatedTx = { ...action.payload, balanceAfter: newBalance };
       return {
         ...state,
-        wcTransactions: [...state.wcTransactions, action.payload],
-        wcBalance: action.payload.balanceAfter,
+        wcTransactions: [...state.wcTransactions, updatedTx],
+        wcBalance: newBalance,
         retainedProfit: isFromProfit
           ? Math.max(0, state.retainedProfit - action.payload.amount)
           : isToRetained
@@ -406,9 +410,9 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'BILLING_ADD_DOCUMENT': {
       const doc = action.payload;
       const counters = { ...state.billing.counters };
-      if (doc.type === 'quote') counters.quote = Math.max(counters.quote, parseInt(doc.number.split('-')[2] || '0'));
-      if (doc.type === 'invoice') counters.invoice = Math.max(counters.invoice, parseInt(doc.number.split('-')[2] || '0'));
-      if (doc.type === 'receipt') counters.receipt = Math.max(counters.receipt, parseInt(doc.number.split('-')[2] || '0'));
+      if (doc.type === 'quote') counters.quote = Math.max(counters.quote, parseInt(doc.number.split('-')[3] || '0'));
+      if (doc.type === 'invoice') counters.invoice = Math.max(counters.invoice, parseInt(doc.number.split('-')[3] || '0'));
+      if (doc.type === 'receipt') counters.receipt = Math.max(counters.receipt, parseInt(doc.number.split('-')[3] || '0'));
       return { ...state, billing: { ...state.billing, documents: [...state.billing.documents, doc], counters } };
     }
     case 'BILLING_UPDATE_DOCUMENT':
@@ -808,7 +812,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     
     return { stipend: stipendPaid, bonus, total: stipendPaid + bonus };
-  }, [getMemberById, getMonthlySummary, state.projects]);
+  }, [getMemberById, state.projects]);
 
   const addWCTransaction = useCallback((
     type: 'inflow' | 'outflow',
