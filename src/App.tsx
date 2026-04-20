@@ -76,7 +76,19 @@ function ApprovalPage({ token }: { token: string }) {
       <div style={{ textAlign: 'center', color: '#888' }}>
         <div style={{ fontSize: '48px', marginBottom: '16px' }}>✕</div>
         <div style={{ fontSize: '16px', color: '#fff', marginBottom: '8px' }}>Quote not found</div>
-        <div style={{ fontSize: '12px' }}>This link may have expired or been removed.</div>
+        <div style={{ fontSize: '12px' }}>This link may have been removed.</div>
+      </div>
+    </div>
+  );
+
+  // Check expiry
+  const today = new Date().toISOString().slice(0, 10);
+  if (payload?.expiresAt && payload.expiresAt < today) return (
+    <div style={{ minHeight: '100vh', background: '#0D0D0D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
+      <div style={{ textAlign: 'center', color: '#888' }}>
+        <div style={{ fontSize: '40px', marginBottom: '16px' }}>⏰</div>
+        <div style={{ fontSize: '16px', color: '#fff', marginBottom: '8px' }}>Approval link expired</div>
+        <div style={{ fontSize: '12px' }}>This quote link expired on {payload.expiresAt}. Please contact {settings.companyName} for a new link.</div>
       </div>
     </div>
   );

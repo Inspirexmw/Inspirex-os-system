@@ -684,6 +684,7 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => duplicate(selected)}><Copy className="w-3 h-3" />Duplicate</Button>
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={() => {
                       const inv = billing.clients.find((c: BillingClient) => c.id === selected.clientId);
+                      const expiresAt = (selected as any).validUntil || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
                       const approvalPayload = {
                         number: selected.number,
                         total: selected.total,
@@ -691,6 +692,7 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                         lineItems: (selected.lineItems || []).map((li: any) => ({ description: li.description, total: li.total })),
                         notes: selected.notes || '',
                         validUntil: (selected as any).validUntil || '',
+                        expiresAt,
                         projectName: (selected as any).projectName || '',
                         docStatus: selected.status,
                         companyName: billing.settings.companyName || '',
@@ -706,13 +708,22 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                     }}>
                     <Link className="w-3 h-3" />Generate Approval Link
                   </Button>
-                  {selected.approvalToken && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1 p-2 bg-secondary/50 rounded text-[10px] font-mono break-all text-muted-foreground">{(billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken}</div>
-                      <Button size="sm" className="w-full text-xs h-7 gap-1.5 justify-start" variant="outline" onClick={() => { navigator.clipboard.writeText((billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken); toast({ title: 'Link copied!' }); }}>Copy Link</Button>
-                      {selected.approvalOpenedCount !== undefined && selected.approvalOpenedCount > 0 && <div className="text-[10px] text-muted-foreground text-center">Opened {selected.approvalOpenedCount}×</div>}
-                    </div>
-                  )}
+                  {selected.approvalToken && (() => {
+                    let linkExpiry: string | null = null;
+                    let isExpired = false;
+                    try {
+                      const p = JSON.parse(decodeURIComponent(atob(selected.approvalToken)));
+                      if (p.expiresAt) { linkExpiry = p.expiresAt; isExpired = p.expiresAt < new Date().toISOString().slice(0, 10); }
+                    } catch {}
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 p-2 bg-secondary/50 rounded text-[10px] font-mono break-all text-muted-foreground">{(billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken}</div>
+                        <Button size="sm" className="w-full text-xs h-7 gap-1.5 justify-start" variant="outline" onClick={() => { navigator.clipboard.writeText((billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken); toast({ title: 'Link copied!' }); }}>Copy Link</Button>
+                        {linkExpiry && <div className={`text-[10px] text-center ${isExpired ? 'text-destructive' : 'text-muted-foreground'}`}>{isExpired ? '⚠ Link expired' : `Expires ${linkExpiry}`}</div>}
+                        {selected.approvalOpenedCount !== undefined && selected.approvalOpenedCount > 0 && <div className="text-[10px] text-muted-foreground text-center">Opened {selected.approvalOpenedCount}×</div>}
+                      </div>
+                    );
+                  })()}
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected.id)}><Trash2 className="w-3 h-3" />Delete</Button>
                 </div>
               </CardContent>
@@ -949,37 +960,6 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => sendEmail(selected)}><Mail className="w-3 h-3" />Send Email</Button>
                   {selected.status === 'draft' && <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => updateStatus(selected, 'sent')}><Send className="w-3 h-3" />Mark Sent</Button>}
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => duplicate(selected)}><Copy className="w-3 h-3" />Duplicate</Button>
-                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={() => {
-                      const inv = billing.clients.find((c: BillingClient) => c.id === selected.clientId);
-                      const approvalPayload = {
-                        number: selected.number,
-                        total: selected.total,
-                        currency: selected.currency,
-                        lineItems: (selected.lineItems || []).map((li: any) => ({ description: li.description, total: li.total })),
-                        notes: selected.notes || '',
-                        validUntil: (selected as any).validUntil || '',
-                        projectName: (selected as any).projectName || '',
-                        docStatus: selected.status,
-                        companyName: billing.settings.companyName || '',
-                        companyEmail: billing.settings.email || '',
-                        website: billing.settings.website || '',
-                        tagline: billing.settings.tagline || '',
-                        clientName: inv?.name || 'Client',
-                      };
-                      const encoded = btoa(encodeURIComponent(JSON.stringify(approvalPayload)));
-                      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...selected, approvalToken: encoded, approvalOpenedCount: 0, updatedAt: new Date().toISOString() } });
-                      setSelected({ ...selected, approvalToken: encoded, approvalOpenedCount: 0 });
-                      toast({ title: '✓ Approval link generated' });
-                    }}>
-                    <Link className="w-3 h-3" />Generate Approval Link
-                  </Button>
-                  {selected.approvalToken && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1 p-2 bg-secondary/50 rounded text-[10px] font-mono break-all text-muted-foreground">{(billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken}</div>
-                      <Button size="sm" className="w-full text-xs h-7 gap-1.5 justify-start" variant="outline" onClick={() => { navigator.clipboard.writeText((billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken); toast({ title: 'Link copied!' }); }}>Copy Link</Button>
-                      {selected.approvalOpenedCount !== undefined && selected.approvalOpenedCount > 0 && <div className="text-[10px] text-muted-foreground text-center">Opened {selected.approvalOpenedCount}×</div>}
-                    </div>
-                  )}
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected.id)}><Trash2 className="w-3 h-3" />Delete</Button>
                 </div>
               </CardContent>
