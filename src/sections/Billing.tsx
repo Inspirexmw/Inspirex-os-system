@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import {
   Plus, FileText, Users, Settings, LayoutDashboard,
@@ -479,6 +479,23 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
   const avatarColors = ['bg-primary/20 text-primary','bg-blue-500/20 text-blue-400','bg-amber-500/20 text-amber-400','bg-purple-500/20 text-purple-400','bg-pink-500/20 text-pink-400'];
   const avatarColor = (id: string) => avatarColors[id.charCodeAt(0) % avatarColors.length];
 
+  const clientStats = useMemo(() => {
+    const map: Record<string, { invoiceCount: number; receivables: number; paid: number; balance: number }> = {};
+    clients.forEach((c: BillingClient) => {
+      const clientInvoices = documents.filter((d: BillingDocument) => d.type === 'invoice' && d.clientId === c.id);
+      const receivables = clientInvoices.reduce((s: number, inv: BillingDocument) => s + inv.total, 0);
+      const paid = clientInvoices.reduce((s: number, inv: BillingDocument) =>
+        s + inv.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
+      map[c.id] = {
+        invoiceCount: clientInvoices.length,
+        receivables,
+        paid,
+        balance: Math.max(0, receivables - paid),
+      };
+    });
+    return map;
+  }, [clients, documents]);
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -522,25 +539,56 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Email</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Phone</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Currency</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Receivables</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Paid</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Balance</th>
                 </tr>
               </thead>
               <tbody>
-                {clients.map((c: BillingClient) => (
-                  <tr key={c.id} onClick={() => setSelected(selected?.id === c.id ? null : c)}
-                    className={`border-b border-border cursor-pointer transition-colors hover:bg-secondary/30 ${selected?.id === c.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}`}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${avatarColor(c.id)}`}>{initials(c.name)}</div>
-                        <span className="font-medium text-sm">{c.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{c.email || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{c.phone || '—'}</td>
-                    <td className="px-4 py-3"><span className="text-xs text-primary font-medium">{c.currency}</span></td>
-                  </tr>
-                ))}
+                {clients.map((c: BillingClient) => {
+                  const stats = clientStats[c.id] ?? { invoiceCount: 0, receivables: 0, paid: 0, balance: 0 };
+                  const balanceColor = stats.balance === 0
+                    ? 'text-emerald-400'
+                    : stats.balance > 0 && stats.paid > 0
+                    ? 'text-amber-400'
+                    : 'text-red-400';
+                  return (
+                    <tr key={c.id} onClick={() => setSelected(selected?.id === c.id ? null : c)}
+                      className={`border-b border-border cursor-pointer transition-colors hover:bg-secondary/30 ${selected?.id === c.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}`}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${avatarColor(c.id)}`}>{initials(c.name)}</div>
+                          <div>
+                            <div className="font-medium text-sm">{c.name}</div>
+                            {stats.invoiceCount > 0 && (
+                              <div className="text-[10px] text-muted-foreground">{stats.invoiceCount} invoice{stats.invoiceCount !== 1 ? 's' : ''}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{c.email || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{c.phone || '—'}</td>
+                      <td className="px-4 py-3"><span className="text-xs text-primary font-medium">{c.currency}</span></td>
+                      <td className="px-4 py-3 text-right">
+                        {stats.receivables > 0
+                          ? <span className="text-xs font-medium">{fmtAmt(stats.receivables, c.currency)}</span>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {stats.paid > 0
+                          ? <span className="text-xs font-medium text-emerald-400">{fmtAmt(stats.paid, c.currency)}</span>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {stats.receivables > 0
+                          ? <span className={`text-xs font-semibold ${balanceColor}`}>{stats.balance === 0 ? '✓ Settled' : fmtAmt(stats.balance, c.currency)}</span>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {clients.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">No clients yet — add your first client above</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">No clients yet — add your first client above</td></tr>
                 )}
               </tbody>
             </table>
