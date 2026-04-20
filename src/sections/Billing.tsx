@@ -667,6 +667,8 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                 </div>
                 <div className="border-t border-border pt-3 space-y-2">
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total</span><span className="font-semibold text-primary">{fmtAmt(selected.total, selected.currency)}</span></div>
+                  {selected.currency !== 'MWK' && <div className="flex justify-between text-xs"><span className="text-muted-foreground">Rate to MWK</span><span>1 {selected.currency} = MK {(selected.exchangeRate || 1).toLocaleString()}</span></div>}
+                  {selected.currency !== 'MWK' && <div className="flex justify-between text-xs"><span className="text-muted-foreground">≈ MWK total</span><span className="text-muted-foreground">MK {Math.round(selected.total * (selected.exchangeRate || 1)).toLocaleString()}</span></div>}
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Issued</span><span>{selected.issueDate}</span></div>
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Valid until</span><span>{selected.validUntil || '—'}</span></div>
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Line items</span><span>{selected.lineItems.length}</span></div>
@@ -936,6 +938,8 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
                 </div>
                 <div className="border-t border-border pt-3 space-y-2">
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total</span><span className="font-semibold">{fmtAmt(selected.total, selected.currency)}</span></div>
+                  {selected.currency !== 'MWK' && <div className="flex justify-between text-xs"><span className="text-muted-foreground">Rate to MWK</span><span>1 {selected.currency} = MK {(selected.exchangeRate || 1).toLocaleString()}</span></div>}
+                  {selected.currency !== 'MWK' && <div className="flex justify-between text-xs"><span className="text-muted-foreground">≈ MWK total</span><span className="text-muted-foreground">MK {Math.round(selected.total * (selected.exchangeRate || 1)).toLocaleString()}</span></div>}
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Paid</span><span className="text-primary font-medium">{fmtAmt(selPaid, selected.currency)}</span></div>
                   <div className="flex justify-between text-xs"><span className="text-muted-foreground">Balance Due</span><span className={selRemaining > 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}>{fmtAmt(selRemaining, selected.currency)}</span></div>
                   {selected.total > 0 && <div className="h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${selPct}%` }} /></div>}
