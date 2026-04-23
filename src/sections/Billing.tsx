@@ -802,9 +802,11 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
         paidAmount: newPaid,
         status: newPaid >= linkedProject.revenue ? 'confirmed' : 'partial',
       }});
-      // Add company contribution to retained profit only once when fully paid for the first time
-      if (isFullyPaid && linkedProject.paymentStatus !== 'confirmed') {
-        const companyPortion = linkedProject.companyContribution || 0;
+      // Proportional retained profit: accrue on every payment based on cost ratio
+      if (linkedProject.revenue > 0) {
+        const costsRatio = (linkedProject.directExpenses || 0) / linkedProject.revenue;
+        const netPortion = payment.mwkEquivalent * (1 - costsRatio);
+        const companyPortion = Math.round(netPortion * ((state.settings.revenueSplit?.companyPercent ?? 60) / 100));
         if (companyPortion > 0) {
           dispatch({ type: 'ADD_RETAINED_PROFIT', payload: companyPortion });
         }
