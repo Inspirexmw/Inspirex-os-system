@@ -62,7 +62,7 @@ export function ProjectCalculator() {
     setLinkedInvoiceId(invoiceId);
     const inv = billingInvoices.find((i: any) => i.id === invoiceId);
     if (!inv) return;
-    setRevenue(String(inv.total));
+    setRevenue(String(Math.round(inv.total * (inv.exchangeRate || 1))));
     // Pull project name: invoice.projectName → first line item title → invoice number
     const autoName = inv.projectName
       || (inv.lineItems?.[0]?.description?.split('\n')[0]?.trim())
