@@ -422,7 +422,7 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
     const map: Record<string, { invoiceCount: number; receivables: number; paid: number; balance: number }> = {};
     clients.forEach((c: BillingClient) => {
       const clientInvoices = documents.filter((d: BillingDocument) => d.type === 'invoice' && d.clientId === c.id);
-      const receivables = clientInvoices.reduce((s: number, inv: BillingDocument) => s + inv.total, 0);
+      const receivables = clientInvoices.reduce((s: number, inv: BillingDocument) => s + inv.total * (inv.exchangeRate || 1), 0);
       const paid = clientInvoices.reduce((s: number, inv: BillingDocument) =>
         s + inv.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
       map[c.id] = {
@@ -800,11 +800,13 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
       dispatch({ type: 'SYNC_PROJECT_PAYMENT_STATUS', payload: {
         projectId: linkedProject.id,
         paidAmount: newPaid,
-        status: newPaid >= linkedProject.revenue ? 'confirmed' : 'partial',
+        status: isFullyPaid ? 'confirmed' : 'partial',
       }});
-      // Add company contribution to retained profit only once when fully paid for the first time
-      if (isFullyPaid && linkedProject.paymentStatus !== 'confirmed') {
-        const companyPortion = linkedProject.companyContribution || 0;
+      // Proportional retained profit: accrue on every payment based on cost ratio
+      if (linkedProject.revenue > 0) {
+        const costsRatio = (linkedProject.directExpenses || 0) / linkedProject.revenue;
+        const netPortion = payment.mwkEquivalent * (1 - costsRatio);
+        const companyPortion = Math.round(netPortion * ((state.settings.revenueSplit?.companyPercent ?? 60) / 100));
         if (companyPortion > 0) {
           dispatch({ type: 'ADD_RETAINED_PROFIT', payload: companyPortion });
         }
@@ -3082,8 +3084,8 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
     inPeriod(t.date)
   ).reduce((s: number, t: any) => s + t.amount, 0);
 
-  const totalRevenue    = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.subtotal, 0);
-  const totalTax        = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.taxAmount, 0);
+  const totalRevenue    = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.subtotal * (i.exchangeRate || 1), 0);
+  const totalTax        = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.taxAmount * (i.exchangeRate || 1), 0);
   const totalReceived   = periodInvoices.reduce((s: number, i: BillingDocument) => s + i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
   const totalOutstanding = periodInvoices.reduce((s: number, i: BillingDocument) => {
     const paid = i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0);
