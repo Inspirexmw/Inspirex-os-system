@@ -119,7 +119,21 @@ export function WorkingCapital() {
   const autoTransferPercent = state.settings.workingCapital?.autoTransferPercent ?? 0;
   const lastHandled = state.lastAutoTransferMonth || '';
   const autoTransferPending = daysUntilMonthEnd <= 2 && autoTransferEnabled && autoTransferPercent > 0 && lastHandled !== currentMonth;
-  const confirmedMonthProjects = state.projects.filter(p => p.month === currentMonth && p.type === 'client' && p.paymentStatus === 'confirmed');
+  // Derive confirmed status from billing data directly — fixes stale paymentStatus in localStorage
+  const confirmedProjectIds = useMemo(() => {
+    const ids = new Set<string>();
+    state.projects.forEach((p: any) => {
+      if (p.paymentStatus === 'confirmed') { ids.add(p.id); return; }
+      if (!p.billingInvoiceId) return;
+      const inv = (state.billing.documents || []).find((d: any) => d.id === p.billingInvoiceId);
+      if (!inv) return;
+      const totalPaid = (inv.payments || []).reduce((s: number, pay: any) => s + (pay.mwkEquivalent || pay.amount || 0), 0);
+      if (totalPaid >= inv.total * (inv.exchangeRate || 1)) ids.add(p.id);
+    });
+    return ids;
+  }, [state.projects, state.billing.documents]);
+
+  const confirmedMonthProjects = state.projects.filter(p => p.month === currentMonth && p.type === 'client' && confirmedProjectIds.has(p.id));
   const monthCompanyFund = confirmedMonthProjects.reduce((s, p) => s + p.companyContribution, 0);
   const suggestedTransfer = Math.round(monthCompanyFund * autoTransferPercent / 100);
 
@@ -218,7 +232,7 @@ export function WorkingCapital() {
     const currentMonthStr = new Date().toISOString().slice(0, 7);
     // Only CONFIRMED projects — bonuses from projected projects are not payable yet
     const confirmedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && p.paymentStatus === 'confirmed'
+      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
     );
     const initial: Record<string, string> = {};
     activeMembers.forEach(m => {
@@ -241,7 +255,7 @@ export function WorkingCapital() {
     const currentMonthStr = new Date().toISOString().slice(0, 7);
     // Only CONFIRMED — projected bonuses not payable yet
     const confirmedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && p.paymentStatus === 'confirmed'
+      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
     );
     return activeMembers.reduce((sum, m) => {
       const bonus = confirmedProjects.reduce((s, p) => {
@@ -250,13 +264,13 @@ export function WorkingCapital() {
       }, 0);
       return sum + Math.round(bonus);
     }, 0);
-  }, [activeMembers, state.projects]);
+  }, [activeMembers, state.projects, confirmedProjectIds]);
 
   // Projected bonuses — visible but NOT payable
   const totalProjectedBonuses = useMemo(() => {
     const currentMonthStr = new Date().toISOString().slice(0, 7);
     const projectedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && p.paymentStatus !== 'confirmed'
+      p.month === currentMonthStr && p.type === 'client' && !confirmedProjectIds.has(p.id)
     );
     return activeMembers.reduce((sum, m) => {
       const bonus = projectedProjects.reduce((s, p) => {
@@ -265,7 +279,7 @@ export function WorkingCapital() {
       }, 0);
       return sum + Math.round(bonus);
     }, 0);
-  }, [activeMembers, state.projects]);
+  }, [activeMembers, state.projects, confirmedProjectIds]);
 
   // Quarter-end detection: March(2), June(5), September(8), December(11)
   const isQuarterEnd = useMemo(() => {
@@ -332,7 +346,7 @@ export function WorkingCapital() {
     // Calculate project bonuses — CONFIRMED ONLY (projected not payable)
     const currentMonthStr = new Date().toISOString().slice(0, 7);
     const confirmedMonthProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && p.paymentStatus === 'confirmed'
+      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
     );
     const memberBonuses: Record<string, number> = {};
     activeMembers.forEach(m => {
@@ -657,8 +671,8 @@ export function WorkingCapital() {
                 const totalOwed = m.stipend + deferred;
                 const currentMonthStr = new Date().toISOString().slice(0, 7);
                 // Split bonuses: confirmed vs projected
-                const confirmedProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client' && p.paymentStatus === 'confirmed');
-                const projectedProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client' && p.paymentStatus !== 'confirmed');
+                const confirmedProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id));
+                const projectedProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client' && !confirmedProjectIds.has(p.id));
                 const confirmedBonus = Math.round(confirmedProjects.reduce((s, p) => {
                   const dist = p.distribution.find(d => d.memberId === m.id);
                   return s + (dist?.finalBonus || 0);
