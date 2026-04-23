@@ -55,8 +55,6 @@ const nextNumber = (type: DocType | 'receipt', counter: number, settings?: { inv
   return `${prefix}${code}-${new Date().getFullYear()}-${String(num).padStart(3, '0')}`;
 };
 
-const slugify = (text: string) =>
-  text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
 const isOverdue = (doc: BillingDocument) =>
   doc.type === 'invoice' && doc.status !== 'paid' && doc.dueDate && new Date(doc.dueDate) < new Date();
@@ -2911,7 +2909,7 @@ function RecurringView({ schedules, clients, billing, dispatch, toast }: any) {
     const invNumber = nextNumber('invoice', billing.counters.invoice, billing.settings);
     const invoice: BillingDocument = {
       id: genId(), type: 'invoice', number: invNumber, clientId: s.clientId,
-      projectName: s.projectName, currency: s.currency, lineItems: s.lineItems,
+      projectName: s.projectName, currency: s.currency, exchangeRate: 1, lineItems: s.lineItems,
       subtotal: s.amount, taxRate: s.taxRate, taxAmount: Math.round(s.amount * s.taxRate / 100),
       discount: 0, total: s.amount, status: 'draft',
       issueDate: new Date().toISOString().slice(0,10),
