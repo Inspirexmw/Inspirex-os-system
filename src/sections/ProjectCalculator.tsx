@@ -335,7 +335,7 @@ export function ProjectCalculator() {
                   <SelectContent className="bg-card border-border">
                     {billingInvoices.map((inv: any) => {
                       const client = billingClients.find((c: any) => c.id === inv.clientId);
-                      return <SelectItem key={inv.id} value={inv.id}>{inv.number} · {client?.name || '—'} · {formatCurrency(inv.total)}</SelectItem>;
+                      return <SelectItem key={inv.id} value={inv.id}>{inv.number} · {client?.name || '—'} · {formatCurrency(Math.round(inv.total * (inv.exchangeRate || 1)))}</SelectItem>;
                     })}
                     {billingInvoices.length === 0 && <SelectItem value="__none" disabled>No invoices — create one in Billing first</SelectItem>}
                   </SelectContent>
@@ -347,7 +347,8 @@ export function ProjectCalculator() {
                 const inv = billingInvoices.find((i: any) => i.id === linkedInvoiceId);
                 const client = inv ? billingClients.find((c: any) => c.id === inv.clientId) : null;
                 const paid = inv ? inv.payments.reduce((s: number, p: any) => s + p.mwkEquivalent, 0) : 0;
-                const pct = inv && inv.total > 0 ? Math.min(100, Math.round((paid / inv.total) * 100)) : 0;
+                const invMwk = inv ? inv.total * (inv.exchangeRate || 1) : 0;
+                const pct = invMwk > 0 ? Math.min(100, Math.round((paid / invMwk) * 100)) : 0;
                 const linked = billingExpenses.filter((e: any) => e.invoiceId === linkedInvoiceId);
                 const costs = linked.reduce((s: number, e: any) => s + e.amount, 0);
                 const pmtStatus = pct >= 100 ? 'confirmed' : pct > 0 ? 'partial' : 'projected';
@@ -364,7 +365,7 @@ export function ProjectCalculator() {
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-card rounded p-2"><div className="text-[9px] text-muted-foreground mb-0.5">Invoice Total</div><div className="text-xs font-semibold">{formatCurrency(inv.total)}</div></div>
+                      <div className="bg-card rounded p-2"><div className="text-[9px] text-muted-foreground mb-0.5">Invoice Total</div><div className="text-xs font-semibold">{formatCurrency(invMwk)}</div></div>
                       <div className="bg-card rounded p-2"><div className="text-[9px] text-muted-foreground mb-0.5">Received</div><div className={`text-xs font-semibold ${paid > 0 ? 'text-primary' : 'text-muted-foreground'}`}>{formatCurrency(paid)}</div></div>
                       <div className="bg-card rounded p-2"><div className="text-[9px] text-muted-foreground mb-0.5">Project Costs</div><div className={`text-xs font-semibold ${costs > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{costs > 0 ? formatCurrency(costs) : '—'}</div></div>
                     </div>
