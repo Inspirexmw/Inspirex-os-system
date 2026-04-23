@@ -800,7 +800,7 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
       dispatch({ type: 'SYNC_PROJECT_PAYMENT_STATUS', payload: {
         projectId: linkedProject.id,
         paidAmount: newPaid,
-        status: newPaid >= linkedProject.revenue ? 'confirmed' : 'partial',
+        status: isFullyPaid ? 'confirmed' : 'partial',
       }});
       // Proportional retained profit: accrue on every payment based on cost ratio
       if (linkedProject.revenue > 0) {
