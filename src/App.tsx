@@ -123,7 +123,7 @@ function ApprovalPage({ token }: { token: string }) {
 
         {/* Line items */}
         <div style={{ background: '#0A0A0A', border: '0.5px solid #1a1a1a', borderRadius: '6px', overflow: 'hidden', marginBottom: '16px' }}>
-          {doc.lineItems.map((item, i) => (
+          {doc.lineItems.map((item: any, i: number) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < doc.lineItems.length - 1 ? '0.5px solid #1a1a1a' : 'none' }}>
               <div style={{ color: '#ddd', fontSize: '11px' }}>{item.description.split('\n')[0]}</div>
               <div style={{ color: '#fff', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap', marginLeft: '12px' }}>{sym} {item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
