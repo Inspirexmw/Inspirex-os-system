@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useApp } from '@/hooks/useAppState';
 import { useToast } from '@/hooks/use-toast';
 import type {
@@ -554,12 +556,52 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
 }
 
 
+// ─── Delete with reason dialog ────────────────────────────────────────────────
+
+interface PendingDelete { id: string; label: string; docNumber: string; docType: string }
+
+function DeleteReasonDialog({ pending, onConfirm, onCancel }: {
+  pending: PendingDelete | null;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  if (!pending) return null;
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onCancel(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete {pending.label}?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          This will permanently remove <span className="font-medium text-foreground">{pending.docNumber}</span> and any linked records. This cannot be undone.
+        </p>
+        <div className="space-y-1">
+          <Label className="text-xs">Reason (optional)</Label>
+          <Textarea
+            placeholder="Why are you deleting this record?"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            rows={3}
+            className="text-sm resize-none"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button variant="destructive" size="sm" onClick={() => { onConfirm(reason); setReason(''); }}>Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Quotes ───────────────────────────────────────────────────────────────────
 
 function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPreview }: any) {
   const [showForm, setShowForm] = useState(false);
   const [editingDoc, setEditingDoc] = useState<BillingDocument | null>(null);
   const [selected, setSelected] = useState<BillingDocument | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const getClient = (id: string) => clients.find((c: BillingClient) => c.id === id);
   const initials = (name: string) => name?.split(' ').map((w:string) => w[0]).join('').slice(0,2).toUpperCase() || '?';
@@ -589,7 +631,15 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
     toast({ title: 'Email draft opened' });
   };
   const updateStatus = (doc: BillingDocument, status: string) => { dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...doc, status, updatedAt: new Date().toISOString() } }); if (selected?.id === doc.id) setSelected({ ...doc, status } as any); toast({ title: 'Status updated' }); };
-  const del = (id: string) => { if (confirm('Delete?')) { dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: id }); if (selected?.id === id) setSelected(null); toast({ title: 'Deleted' }); }};
+  const del = (doc: BillingDocument) => setPendingDelete({ id: doc.id, label: doc.type === 'proforma' ? 'Proforma Invoice' : 'Quote', docNumber: doc.number, docType: doc.type });
+  const confirmDelete = (reason: string) => {
+    if (!pendingDelete) return;
+    dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: pendingDelete.id });
+    dispatch({ type: 'ADD_NOTIFICATION', payload: { id: 'del-' + genId(), type: 'record_deleted', title: pendingDelete.label + ' ' + pendingDelete.docNumber + ' deleted', message: reason.trim() || 'No reason provided', createdAt: new Date().toISOString(), read: false, dismissed: false, actionData: { docType: pendingDelete.docType, docNumber: pendingDelete.docNumber } } });
+    if (selected?.id === pendingDelete.id) setSelected(null);
+    toast({ title: pendingDelete.label + ' deleted' });
+    setPendingDelete(null);
+  };
 
 
   const selClient = selected ? getClient(selected.clientId) : null;
@@ -724,13 +774,14 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                       </div>
                     );
                   })()}
-                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected.id)}><Trash2 className="w-3 h-3" />Delete</Button>
+                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected)}><Trash2 className="w-3 h-3" />Delete</Button>
                 </div>
               </CardContent>
             </Card>
           </div>
         )}
       </div>
+      <DeleteReasonDialog pending={pendingDelete} onConfirm={confirmDelete} onCancel={() => setPendingDelete(null)} />
     </div>
   );
 }
@@ -742,6 +793,7 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
   const [showForm, setShowForm] = useState(false);
   const [editingDoc, setEditingDoc] = useState<BillingDocument | null>(null);
   const [selected, setSelected] = useState<BillingDocument | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [payingInvoice, setPayingInvoice] = useState<BillingDocument | null>(null);
   const [payForm, setPayForm] = useState({ amount: '', currency: 'MWK' as BillingCurrency, exchangeRate: '1', method: 'Bank Transfer', reference: '', date: new Date().toISOString().slice(0, 10) });
 
@@ -763,7 +815,15 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
     }, 0) / paidInvoices.length
   );
 
-  const del = (id: string) => { if (confirm('Delete invoice?')) { dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: id }); if (selected?.id === id) setSelected(null); toast({ title: 'Invoice deleted' }); }};
+  const del = (doc: BillingDocument) => setPendingDelete({ id: doc.id, label: 'Invoice', docNumber: doc.number, docType: doc.type });
+  const confirmDelete = (reason: string) => {
+    if (!pendingDelete) return;
+    dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: pendingDelete.id });
+    dispatch({ type: 'ADD_NOTIFICATION', payload: { id: 'del-' + genId(), type: 'record_deleted', title: 'Invoice ' + pendingDelete.docNumber + ' deleted', message: reason.trim() || 'No reason provided', createdAt: new Date().toISOString(), read: false, dismissed: false, actionData: { docType: pendingDelete.docType, docNumber: pendingDelete.docNumber } } });
+    if (selected?.id === pendingDelete.id) setSelected(null);
+    toast({ title: 'Invoice deleted' });
+    setPendingDelete(null);
+  };
   const updateStatus = (doc: BillingDocument, status: string) => { dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...doc, status, updatedAt: new Date().toISOString() } }); if (selected?.id === doc.id) setSelected({ ...doc, status } as any); toast({ title: 'Status updated' }); };
   const duplicate = (inv: BillingDocument) => { const num = nextNumber('invoice', billing.counters.invoice, billing.settings); dispatch({ type: 'BILLING_ADD_DOCUMENT', payload: { ...inv, id: genId(), number: num, status: 'draft', payments: [], convertedFromQuoteId: undefined, convertedToInvoiceId: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } }); toast({ title: 'Duplicated', description: num }); };
   const sendEmail = (inv: BillingDocument) => {
@@ -964,13 +1024,14 @@ function InvoicesView({ invoices, clients, billing, state, dispatch, toast, open
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => sendEmail(selected)}><Mail className="w-3 h-3" />Send Email</Button>
                   {selected.status === 'draft' && <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => updateStatus(selected, 'sent')}><Send className="w-3 h-3" />Mark Sent</Button>}
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => duplicate(selected)}><Copy className="w-3 h-3" />Duplicate</Button>
-                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected.id)}><Trash2 className="w-3 h-3" />Delete</Button>
+                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected)}><Trash2 className="w-3 h-3" />Delete</Button>
                 </div>
               </CardContent>
             </Card>
           </div>
         )}
       </div>
+      <DeleteReasonDialog pending={pendingDelete} onConfirm={confirmDelete} onCancel={() => setPendingDelete(null)} />
     </div>
   );
 }
@@ -1382,13 +1443,22 @@ function ReceiptsView({ receipts, clients, billing, dispatch, toast, openPreview
   const [selected, setSelected] = useState<BillingDocument | null>(null);
   const [editingReceipt, setEditingReceipt] = useState<BillingDocument | null>(null);
   const [editForm, setEditForm] = useState({ notes: '', projectName: '', issueDate: '' });
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const getClient = (id: string) => clients.find((c: BillingClient) => c.id === id);
   const initials = (name: string) => name?.split(' ').map((w:string) => w[0]).join('').slice(0,2).toUpperCase() || '?';
   const avatarColors = ['bg-primary/20 text-primary','bg-blue-500/20 text-blue-400','bg-amber-500/20 text-amber-400','bg-purple-500/20 text-purple-400','bg-pink-500/20 text-pink-400'];
   const avatarColor = (id: string) => avatarColors[id?.charCodeAt(0) % avatarColors.length] || avatarColors[0];
 
-  const del = (id: string) => { if (confirm('Delete receipt?')) { dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: id }); if (selected?.id === id) setSelected(null); toast({ title: 'Receipt deleted' }); }};
+  const del = (doc: BillingDocument) => setPendingDelete({ id: doc.id, label: 'Receipt', docNumber: doc.number, docType: doc.type });
+  const confirmDelete = (reason: string) => {
+    if (!pendingDelete) return;
+    dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: pendingDelete.id });
+    dispatch({ type: 'ADD_NOTIFICATION', payload: { id: 'del-' + genId(), type: 'record_deleted', title: 'Receipt ' + pendingDelete.docNumber + ' deleted', message: reason.trim() || 'No reason provided', createdAt: new Date().toISOString(), read: false, dismissed: false, actionData: { docType: pendingDelete.docType, docNumber: pendingDelete.docNumber } } });
+    if (selected?.id === pendingDelete.id) setSelected(null);
+    toast({ title: 'Receipt deleted' });
+    setPendingDelete(null);
+  };
   const startEdit = (r: BillingDocument) => { setEditingReceipt(r); setEditForm({ notes: r.notes || '', projectName: (r as any).projectName || '', issueDate: r.issueDate }); };
   const saveEdit = () => {
     if (!editingReceipt) return;
@@ -1512,7 +1582,7 @@ function ReceiptsView({ receipts, clients, billing, dispatch, toast, openPreview
                     <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => openPreview(selected)}><Eye className="w-3 h-3" />Preview</Button>
                     <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => generatePDF(selected, selClient, billing.settings)}><FileText className="w-3 h-3" />Download PDF</Button>
                     <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => sendEmail(selected)}><Mail className="w-3 h-3" />Send Email</Button>
-                    <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected.id)}><Trash2 className="w-3 h-3" />Delete</Button>
+                    <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-destructive border-destructive/30" variant="outline" onClick={() => del(selected)}><Trash2 className="w-3 h-3" />Delete</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1520,6 +1590,7 @@ function ReceiptsView({ receipts, clients, billing, dispatch, toast, openPreview
           )}
         </div>
       )}
+      <DeleteReasonDialog pending={pendingDelete} onConfirm={confirmDelete} onCancel={() => setPendingDelete(null)} />
     </div>
   );
 }

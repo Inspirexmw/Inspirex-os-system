@@ -295,7 +295,8 @@ export type NotificationType =
   | 'wc_low'
   | 'quote_approved'
   | 'quote_declined'
-  | 'recurring_due';
+  | 'recurring_due'
+  | 'record_deleted';
 
 export interface AppNotification {
   id: string;
