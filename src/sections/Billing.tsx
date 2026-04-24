@@ -1112,7 +1112,7 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
             </div>
             {items.map(item => (
               <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-5"><textarea value={item.description} onChange={e => updateItem(item.id, 'description', e.target.value)} placeholder="Service description" rows={2} className="w-full bg-secondary border border-input rounded-md px-3 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" /></div>
+                <div className="col-span-5"><textarea ref={el => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }}} value={item.description} onChange={e => updateItem(item.id, 'description', e.target.value)} placeholder="Service description" rows={2} style={{ overflow: 'hidden', minHeight: '56px' }} className="w-full bg-secondary border border-input rounded-md px-3 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" /></div>
                 <div className="col-span-2"><Input type="number" value={item.qty} onChange={e => updateItem(item.id, 'qty', parseFloat(e.target.value)||0)} className="bg-secondary border-input h-8 text-sm text-right" /></div>
                 <div className="col-span-2"><Input type="number" value={item.unitPrice} onChange={e => updateItem(item.id, 'unitPrice', parseFloat(e.target.value)||0)} className="bg-secondary border-input h-8 text-sm text-right" /></div>
                 <div className="col-span-2 text-right text-sm font-medium">{item.total.toLocaleString()}</div>
@@ -1718,13 +1718,18 @@ function DocumentPreview({ doc, client, settings }: { doc: BillingDocument; clie
             <div style={{ color: '#444', fontSize: '10px' }}>{idx + 1}</div>
             <div style={{ fontSize: '10px', lineHeight: 1.5, wordBreak: 'break-word' }}>
               {(() => {
-                const lines = item.description.split('\n').map((l: string) => l.trim()).filter((l: string) => l);
+                const lines = item.description.split('\n');
                 const title = lines[0] || '';
-                const detail = lines.slice(1).join(' ');
+                const detailLines = lines.slice(1);
+                const hasDetail = detailLines.some((l: string) => l.trim() !== '');
                 return (
                   <>
-                    <div style={{ color: '#fff', fontWeight: 600, marginBottom: detail ? '3px' : '0' }}>{title}</div>
-                    {detail && <div style={{ color: '#999', fontSize: '9px' }}>{detail}</div>}
+                    <div style={{ color: '#fff', fontWeight: 600, marginBottom: hasDetail ? '3px' : '0' }}>{title}</div>
+                    {hasDetail && (
+                      <div style={{ color: '#999', fontSize: '9px', lineHeight: 1.6 }}>
+                        {detailLines.map((l: string, i: number) => <div key={i}>{l || '\u00a0'}</div>)}
+                      </div>
+                    )}
                   </>
                 );
               })()}
@@ -1786,12 +1791,94 @@ function DocumentPreview({ doc, client, settings }: { doc: BillingDocument; clie
   );
 }
 
+// ─── PDF Height Estimator ─────────────────────────────────────────────────────
+
+function estimatePDFHeight(doc: BillingDocument, client: BillingClient | undefined, settings: BillingSettings): number {
+  if (doc.type === 'receipt') return 297;
+  const m = new jsPDF({ unit: 'mm', format: 'a4' });
+  const M = 18, W = 210, CW = W - M * 2;
+  const COL_DESC_X = M + 8, COL_QTY_R = W - M - 62;
+  const COL_DESC_W = COL_QTY_R - COL_DESC_X - 5;
+  let h = M + 2;
+
+  // 1. Header (logo + tagline + divider)
+  const logoH = (settings.logoHeight && settings.logoHeight > 0) ? settings.logoHeight : 22;
+  h += logoH + 1 + 5 + 5 + 7; // logo, tagline, gap, divider
+
+  // 2. FROM / BILL TO names + detail rows
+  h += 4; // labels
+  m.setFontSize(10.5); m.setFont('helvetica', 'bold');
+  const clientNameLines = m.splitTextToSize(client?.name || '—', CW / 2 - 2) as string[];
+  h += Math.max(5, clientNameLines.length * 4.5 + 1);
+  m.setFontSize(8); m.setFont('helvetica', 'normal');
+  const fromDetails = [settings.email, settings.phone, settings.website, settings.address].filter(Boolean) as string[];
+  const toDetailRaw = [client?.email || '', client?.phone || '', client?.address || ''].filter(Boolean) as string[];
+  const toDetails: string[] = toDetailRaw.flatMap(line => m.splitTextToSize(line, CW / 2 - 4) as string[]);
+  h += Math.max(fromDetails.length, toDetails.length) * 4 + 5;
+
+  // 3. Dates bar
+  h += 13 + 5;
+
+  // 4. Project name (optional)
+  if ((doc as any).projectName) {
+    m.setFontSize(11); m.setFont('helvetica', 'bold');
+    const projLines = m.splitTextToSize((doc as any).projectName, CW) as string[];
+    h += 4 + projLines.length * 5 + 4;
+  }
+
+  // 5. Line items table
+  h += 9 + 2; // header
+  const lineH = 4.6, padV = 4;
+  doc.lineItems.forEach(item => {
+    const rawLines = item.description.split('\n');
+    const titleText = rawLines[0] || '';
+    const manualDetailLines = rawLines.slice(1);
+    m.setFontSize(8.5); m.setFont('helvetica', 'bold');
+    const tl = m.splitTextToSize(titleText, COL_DESC_W) as string[];
+    let detailCount = 0;
+    if (manualDetailLines.some(l => l.trim())) {
+      m.setFontSize(8); m.setFont('helvetica', 'normal');
+      manualDetailLines.forEach(l => {
+        detailCount += l.trim() ? (m.splitTextToSize(l, COL_DESC_W) as string[]).length : 1;
+      });
+    }
+    const rowH = Math.max(12, padV + tl.length * lineH + (detailCount > 0 ? detailCount * lineH + 2 : 0) + padV);
+    h += rowH + 2;
+  });
+  h += 6;
+
+  // 6. Notes + Totals
+  let notesBoxH = 0;
+  if (doc.notes) {
+    m.setFontSize(8); m.setFont('helvetica', 'normal');
+    const nl = m.splitTextToSize(doc.notes, CW * 0.47 - 8) as string[];
+    notesBoxH = nl.length * 4.5 + 14;
+  }
+  let totalsH = 2 + 6;
+  if (doc.taxRate > 0) totalsH += 6;
+  if (doc.discount > 0) totalsH += 6;
+  totalsH += 10;
+  h += Math.max(notesBoxH, totalsH) + 8;
+
+  // 7. Payment history
+  if (doc.payments.length > 0) h += 14 + doc.payments.length * 5 + 4;
+
+  // 8. Payment details (5 bank rows)
+  h += 6 + 6 + 5 * 5;
+
+  // Footer area + buffer
+  h += 25;
+
+  return Math.max(297, Math.ceil(h) + 15);
+}
+
 // ─── PDF Generator — pixel-matched to HTML preview ───────────────────────────
 
 function generatePDF(doc: BillingDocument, client: BillingClient | undefined, settings: BillingSettings) {
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const totalH = estimatePDFHeight(doc, client, settings);
+  const pdf = new jsPDF({ unit: 'mm', format: doc.type === 'receipt' ? 'a4' : [210, totalH] as [number, number], orientation: 'portrait' });
   const W  = 210;
-  const H  = 297;
+  const H  = doc.type === 'receipt' ? 297 : totalH;
   const M  = 18;
   const CW = W - M * 2;
   let y    = 0;
@@ -2106,18 +2193,16 @@ function generatePDF(doc: BillingDocument, client: BillingClient | undefined, se
     const lineH = 4.6;
     const padV  = 4;
 
-    // Split at first newline: title (bold) + detail (muted)
-    // If no newline, entire description is the title — still must wrap
-    const rawLines = item.description.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-    const titleText  = rawLines[0] || '';
-    const detailText = rawLines.slice(1).join(' ');
+    const rawLines = item.description.split('\n');
+    const titleText = rawLines[0] || '';
+    const manualDetailLines = rawLines.slice(1);
 
-    // Both title and detail must wrap within column width
     pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bold');
-    const titleLines  = pdf.splitTextToSize(titleText, COL_DESC_W) as string[];
+    const titleLines = pdf.splitTextToSize(titleText, COL_DESC_W) as string[];
     pdf.setFontSize(8); pdf.setFont('helvetica', 'normal');
-    const detailLines = detailText
-      ? pdf.splitTextToSize(detailText, COL_DESC_W) as string[]
+    // Wrap each manual line separately so Enter-pressed line breaks are preserved
+    const detailLines: string[] = manualDetailLines.length > 0 && manualDetailLines.some((l: string) => l.trim())
+      ? manualDetailLines.flatMap((l: string) => l.trim() ? pdf.splitTextToSize(l, COL_DESC_W) as string[] : [''])
       : [];
 
     // Row height = padding + title lines + gap + detail lines + padding
