@@ -35,11 +35,25 @@ export function MonthlySummary() {
     return getMonthlySummary(selectedMonth);
   }, [getMonthlySummary, selectedMonth]);
 
+  // Derive confirmed status from billing data — fixes stale paymentStatus in localStorage
+  const confirmedProjectIds = useMemo(() => {
+    const ids = new Set<string>();
+    state.projects.forEach((p: any) => {
+      if (p.paymentStatus === 'confirmed') { ids.add(p.id); return; }
+      if (!p.billingInvoiceId) return;
+      const inv = (state.billing.documents || []).find((d: any) => d.id === p.billingInvoiceId);
+      if (!inv) return;
+      const totalPaid = (inv.payments || []).reduce((s: number, pay: any) => s + (pay.mwkEquivalent || pay.amount || 0), 0);
+      if (totalPaid >= inv.total * (inv.exchangeRate || 1)) ids.add(p.id);
+    });
+    return ids;
+  }, [state.projects, state.billing.documents]);
+
   // Projected vs confirmed — check payment status of all projects in this month
   const monthProjects = state.projects.filter(p => p.month === selectedMonth && p.type === 'client');
-  const confirmedProjects = monthProjects.filter(p => p.paymentStatus === 'confirmed');
-  const partialProjects = monthProjects.filter(p => p.paymentStatus === 'partial');
-  const projectedProjects = monthProjects.filter(p => p.paymentStatus === 'projected');
+  const confirmedProjects = monthProjects.filter(p => confirmedProjectIds.has(p.id));
+  const partialProjects = monthProjects.filter(p => !confirmedProjectIds.has(p.id) && (p.paymentStatus === 'partial' || (state.billing.documents || []).some((d: any) => d.id === p.billingInvoiceId && d.payments?.length > 0)));
+  const projectedProjects = monthProjects.filter(p => !confirmedProjectIds.has(p.id) && !partialProjects.find(pp => pp.id === p.id));
   const confirmedRevenue = confirmedProjects.reduce((s, p) => s + p.paidAmount, 0);
   const hasAllConfirmed = monthProjects.length > 0 && projectedProjects.length === 0 && partialProjects.length === 0;
   const hasNoneConfirmed = monthProjects.length > 0 && confirmedProjects.length === 0 && partialProjects.length === 0;
