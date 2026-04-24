@@ -336,8 +336,7 @@ export function WorkingCapital() {
 
   // Pay stipends
   const payStipends = useCallback(() => {
-    const entries = Object.entries(stipendAmounts).filter(([, v]) => parseFloat(v) > 0);
-    if (!entries.length) { toast({ title: 'No amounts entered', variant: 'destructive' }); return; }
+    const stipendEntries = Object.entries(stipendAmounts).filter(([, v]) => parseFloat(v) > 0);
 
     // Detect quarter-end month (March=2, June=5, September=8, December=11)
     const now = new Date();
@@ -365,6 +364,16 @@ export function WorkingCapital() {
         const reward = getContributionBankReward(m.id);
         if (reward.rewardAmount > 0) memberBankRewards[m.id] = Math.round(reward.rewardAmount);
       });
+    }
+
+    // Include bonus-only members (stipend=0 but have confirmed bonus) in payout
+    const bonusOnlyEntries: [string, string][] = activeMembers
+      .filter(m => !stipendEntries.find(([id]) => id === m.id) && (memberBonuses[m.id] || 0) > 0)
+      .map(m => [m.id, '0']);
+    const entries = [...stipendEntries, ...bonusOnlyEntries];
+
+    if (!entries.length && Object.keys(memberBonuses).length === 0) {
+      toast({ title: 'No amounts entered', variant: 'destructive' }); return;
     }
 
     const totalBonuses = Object.values(memberBonuses).reduce((s, v) => s + v, 0);
