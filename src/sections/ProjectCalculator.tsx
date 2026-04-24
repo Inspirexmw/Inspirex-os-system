@@ -184,7 +184,11 @@ export function ProjectCalculator() {
 
     // Retroactively accrue retained profit for payments already on the linked invoice
     // (fires when invoice was paid before the project was saved in calculator)
-    if (linkedInv && linkedInv.payments?.length > 0 && calculations.rev > 0) {
+    // Guard: skip if this invoice is already linked to another saved project (would double-count)
+    const invoiceAlreadyLinked = linkedInvoiceId
+      ? state.projects.some((p: any) => p.billingInvoiceId === linkedInvoiceId)
+      : false;
+    if (!invoiceAlreadyLinked && linkedInv && linkedInv.payments?.length > 0 && calculations.rev > 0) {
       const costsRatio = calculations.exp / calculations.rev;
       const companyPct = (state.settings.revenueSplit?.companyPercent ?? 60) / 100;
       linkedInv.payments.forEach((p: any) => {
