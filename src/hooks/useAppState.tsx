@@ -113,7 +113,10 @@ type Action =
   | { type: 'RECURRING_DELETE'; payload: string }
   | { type: 'EXPENSE_ADD'; payload: Expense }
   | { type: 'EXPENSE_UPDATE'; payload: Expense }
-  | { type: 'EXPENSE_DELETE'; payload: string };
+  | { type: 'EXPENSE_DELETE'; payload: string }
+  | { type: 'ADD_PROJECT_TASK'; payload: { projectId: string; task: import('@/types').ProjectTask } }
+  | { type: 'UPDATE_PROJECT_TASK'; payload: { projectId: string; taskId: string; updates: Partial<import('@/types').ProjectTask> } }
+  | { type: 'DELETE_PROJECT_TASK'; payload: { projectId: string; taskId: string } };
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -154,6 +157,7 @@ function appReducer(state: AppState, action: Action): AppState {
           payments: [],
           paymentStatus: 'projected',
           paidAmount: 0,
+          tasks: [],
           ...p,
         })),
         notifications: action.payload.notifications || [],
@@ -200,6 +204,33 @@ function appReducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         projects: state.projects.filter(p => p.id !== action.payload),
+      };
+    case 'ADD_PROJECT_TASK':
+      return {
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === action.payload.projectId
+            ? { ...p, tasks: [...(p.tasks || []), action.payload.task] }
+            : p
+        ),
+      };
+    case 'UPDATE_PROJECT_TASK':
+      return {
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === action.payload.projectId
+            ? { ...p, tasks: (p.tasks || []).map(t => t.id === action.payload.taskId ? { ...t, ...action.payload.updates } : t) }
+            : p
+        ),
+      };
+    case 'DELETE_PROJECT_TASK':
+      return {
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === action.payload.projectId
+            ? { ...p, tasks: (p.tasks || []).filter(t => t.id !== action.payload.taskId) }
+            : p
+        ),
       };
     case 'ADD_WORK_LOG':
       return { ...state, workLog: [...state.workLog, action.payload] };

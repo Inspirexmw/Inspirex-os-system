@@ -157,6 +157,16 @@ export interface DimensionScores {
   quality: number;
 }
 
+// === PROJECT TASKS ===
+export interface ProjectTask {
+  id: string;
+  description: string;
+  assignedMemberId: string;
+  status: 'pending' | 'in-progress' | 'done';
+  createdAt: string;
+  completedAt?: string;
+}
+
 // === WORK LOG ===
 export interface WorkLogEntry {
   id: string;
@@ -212,6 +222,7 @@ export interface Project {
   billingClientId?: string;
   paymentStatus: 'projected' | 'partial' | 'confirmed';  // driven by Billing
   paidAmount: number;  // amount received so far from Billing
+  tasks: ProjectTask[];
 }
 
 // === MONTHLY DATA ===
