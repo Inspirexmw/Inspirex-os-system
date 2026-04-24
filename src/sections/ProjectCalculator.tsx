@@ -182,6 +182,20 @@ export function ProjectCalculator() {
 
     dispatch({ type: 'ADD_PROJECT', payload: newProject });
 
+    // Retroactively accrue retained profit for payments already on the linked invoice
+    // (fires when invoice was paid before the project was saved in calculator)
+    if (linkedInv && linkedInv.payments?.length > 0 && calculations.rev > 0) {
+      const costsRatio = calculations.exp / calculations.rev;
+      const companyPct = (state.settings.revenueSplit?.companyPercent ?? 60) / 100;
+      linkedInv.payments.forEach((p: any) => {
+        const mwkAmt = p.mwkEquivalent || p.amount || 0;
+        const companyPortion = Math.round(mwkAmt * (1 - costsRatio) * companyPct);
+        if (companyPortion > 0) {
+          dispatch({ type: 'ADD_RETAINED_PROFIT', payload: companyPortion });
+        }
+      });
+    }
+
     // AUTO-CREATE WORK LOG ENTRIES for every scored member
     const today = new Date().toISOString().slice(0, 10);
     const workLogEntries: WorkLogEntry[] = memberScores
