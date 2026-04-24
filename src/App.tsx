@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
 import { Sidebar, NotificationPanel } from '@/components/Sidebar';
 import { Dashboard } from '@/sections/Dashboard';
 import { ProjectCalculator } from '@/sections/ProjectCalculator';
@@ -14,6 +15,128 @@ import { AppProvider, useApp } from '@/hooks/useAppState';
 import { Toaster } from '@/components/ui/sonner';
 import type { ViewType } from '@/types';
 import type { BillingDocument } from '@/types';
+
+// ── Quote PDF for Approval Page ───────────────────────────────────────────────
+function downloadApprovalPDF(doc: any, clientName: string, settings: any, sym: string) {
+  const lineItems: any[] = doc.lineItems || [];
+  const ROW_H = 8;
+  const BASE_H = 120 + lineItems.length * ROW_H + (doc.notes ? 20 : 0);
+  const totalH = Math.max(BASE_H, 120);
+
+  const pdf = new jsPDF({ unit: 'mm', format: [210, totalH], orientation: 'portrait' });
+  const W = 210, M = 18, CW = W - M * 2;
+  let y = M + 2;
+
+  // Background
+  pdf.setFillColor('#0D0D0D');
+  pdf.rect(0, 0, W, totalH, 'F');
+
+  // Logo / company name
+  if (settings.logoBase64) {
+    try {
+      const ext = settings.logoBase64.includes('image/png') ? 'PNG' : 'JPEG';
+      const ti = document.createElement('img'); ti.src = settings.logoBase64;
+      const nw = ti.naturalWidth || 400, nh = ti.naturalHeight || 120;
+      const lw = Math.min(Math.max(settings.logoWidth || 50, 20), 80);
+      const lh = settings.logoHeight && settings.logoHeight > 0 ? settings.logoHeight : Math.min(Math.max(+(lw * nh / nw).toFixed(1), 7), 22);
+      pdf.addImage(settings.logoBase64, ext, M, y - 2, lw, lh);
+      y += lh + 2;
+    } catch {
+      pdf.setFontSize(18); pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#FFFFFF'); pdf.text('Inspire', M, y);
+      pdf.setTextColor('#73F764'); pdf.text('X', M + pdf.getTextWidth('Inspire'), y);
+      y += 7;
+    }
+  } else {
+    pdf.setFontSize(18); pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor('#FFFFFF'); pdf.text('Inspire', M, y);
+    pdf.setTextColor('#73F764'); pdf.text('X', M + pdf.getTextWidth('Inspire'), y);
+    y += 7;
+  }
+  if (settings.tagline) {
+    pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#555555');
+    pdf.text(settings.tagline, M, y); y += 4;
+  }
+
+  // QUOTE label top right
+  const headerY = M + 2;
+  pdf.setFontSize(20); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#73F764');
+  pdf.text('QUOTE', W - M, headerY + 5, { align: 'right' });
+  pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
+  pdf.text('# ' + doc.number, W - M, headerY + 11, { align: 'right' });
+
+  // Green divider
+  pdf.setDrawColor('#73F764'); pdf.setLineWidth(0.5);
+  pdf.line(M, y, W - M, y); y += 6;
+
+  // Client + date info
+  pdf.setFontSize(8); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#AAAAAA');
+  pdf.text('Prepared for', M, y);
+  pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#FFFFFF');
+  pdf.text(clientName, M + 24, y); y += 5;
+  if (doc.projectName) {
+    pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
+    pdf.text('Project: ' + doc.projectName, M, y); y += 5;
+  }
+  if (doc.validUntil) {
+    pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#555555');
+    pdf.text('Valid until: ' + doc.validUntil, M, y); y += 5;
+  }
+  y += 2;
+
+  // Line items table header
+  pdf.setFillColor('#111111');
+  pdf.rect(M, y, CW, 7, 'F');
+  pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#888888');
+  pdf.text('Description', M + 3, y + 4.5);
+  pdf.text('Qty', W - M - 48, y + 4.5, { align: 'right' });
+  pdf.text('Unit Price', W - M - 22, y + 4.5, { align: 'right' });
+  pdf.text('Total', W - M - 2, y + 4.5, { align: 'right' });
+  y += 7;
+
+  // Line items rows
+  lineItems.forEach((item: any, i: number) => {
+    pdf.setFillColor(i % 2 === 0 ? '#0A0A0A' : '#0D0D0D');
+    pdf.rect(M, y, CW, ROW_H, 'F');
+    pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#DDDDDD');
+    const descLines = pdf.splitTextToSize(item.description?.split('\n')[0] || '', 90);
+    pdf.text(descLines[0], M + 3, y + 5);
+    pdf.setTextColor('#AAAAAA');
+    pdf.text(String(item.qty ?? ''), W - M - 48, y + 5, { align: 'right' });
+    pdf.text(sym + ' ' + (item.unitPrice ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), W - M - 22, y + 5, { align: 'right' });
+    pdf.setTextColor('#FFFFFF');
+    pdf.text(sym + ' ' + (item.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), W - M - 2, y + 5, { align: 'right' });
+    y += ROW_H;
+  });
+
+  // Total row
+  y += 2;
+  pdf.setDrawColor('#1E1E1E'); pdf.setLineWidth(0.3);
+  pdf.line(M, y, W - M, y); y += 5;
+  pdf.setFontSize(11); pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor('#888888'); pdf.text('Total', M, y);
+  pdf.setTextColor('#73F764'); pdf.text(sym + ' ' + (doc.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), W - M - 2, y, { align: 'right' });
+  y += 8;
+
+  // Notes
+  if (doc.notes) {
+    pdf.setDrawColor('#1E1E1E'); pdf.setLineWidth(0.3);
+    pdf.line(M, y, W - M, y); y += 5;
+    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#666666');
+    const noteLines = pdf.splitTextToSize(doc.notes, CW);
+    noteLines.forEach((line: string) => { pdf.text(line, M, y); y += 4; });
+    y += 2;
+  }
+
+  // Footer
+  pdf.setDrawColor('#1E1E1E'); pdf.setLineWidth(0.3);
+  pdf.line(M, totalH - 12, W - M, totalH - 12);
+  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#444444');
+  pdf.text(settings.companyName + (settings.website ? ' · ' + settings.website : ''), M, totalH - 7);
+  pdf.text(new Date().toLocaleDateString('en-GB'), W - M, totalH - 7, { align: 'right' });
+
+  pdf.save(doc.number + '.pdf');
+}
 
 // ── Quote Approval Page ────────────────────────────────────────────────────────
 function ApprovalPage({ token }: { token: string }) {
@@ -133,6 +256,16 @@ function ApprovalPage({ token }: { token: string }) {
 
         {/* Notes */}
         {doc.notes && <div style={{ fontSize: '10px', color: '#666', marginBottom: '16px', lineHeight: 1.6 }}>{doc.notes}</div>}
+
+        {/* Download PDF */}
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            onClick={() => downloadApprovalPDF(doc, clientName, settings, sym)}
+            style={{ width: '100%', padding: '10px', background: '#111', color: '#73F764', borderRadius: '6px', border: '0.5px solid #73F764', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+          >
+            ↓ Download PDF
+          </button>
+        </div>
 
         {/* Approval actions */}
         {status === 'pending' && doc.status !== 'accepted' && doc.status !== 'rejected' && (
