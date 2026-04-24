@@ -576,7 +576,7 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
     setView('invoices');
   };
   const duplicate = (q: BillingDocument) => {
-    const num = nextNumber(q.type as DocType, billing.counters[q.type === 'proforma' ? 'invoice' : 'quote']);
+    const num = nextNumber(q.type as DocType, billing.counters[q.type === 'proforma' ? 'invoice' : 'quote'], billing.settings);
     dispatch({ type: 'BILLING_ADD_DOCUMENT', payload: { ...q, id: genId(), number: num, status: 'draft', payments: [], convertedToInvoiceId: undefined, convertedFromQuoteId: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
     toast({ title: 'Duplicated', description: num });
   };
@@ -1016,7 +1016,7 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
     if (items.every(i => !i.description.trim())) { toast({ title: 'Add at least one line item', variant: 'destructive' }); return; }
 
     const counterKey = docType === 'proforma' ? 'invoice' : docType;
-    const number = ed ? ed.number : nextNumber(docType, billing.counters[counterKey]);
+    const number = ed ? ed.number : nextNumber(docType, billing.counters[counterKey], billing.settings);
     const status = asDraft ? 'draft' : (ed?.status || 'draft');
 
     const docData: BillingDocument = {

@@ -410,9 +410,10 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'BILLING_ADD_DOCUMENT': {
       const doc = action.payload;
       const counters = { ...state.billing.counters };
-      if (doc.type === 'quote') counters.quote = Math.max(counters.quote, parseInt(doc.number.split('-')[3] || '0'));
-      if (doc.type === 'invoice') counters.invoice = Math.max(counters.invoice, parseInt(doc.number.split('-')[3] || '0'));
-      if (doc.type === 'receipt') counters.receipt = Math.max(counters.receipt, parseInt(doc.number.split('-')[3] || '0'));
+      const seq = parseInt(doc.number.split('-').at(-1) || '0');
+      if (doc.type === 'quote') counters.quote = Math.max(counters.quote, seq);
+      if (doc.type === 'invoice' || doc.type === 'proforma') counters.invoice = Math.max(counters.invoice, seq);
+      if (doc.type === 'receipt') counters.receipt = Math.max(counters.receipt, seq);
       return { ...state, billing: { ...state.billing, documents: [...state.billing.documents, doc], counters } };
     }
     case 'BILLING_UPDATE_DOCUMENT':
