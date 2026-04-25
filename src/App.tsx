@@ -145,8 +145,17 @@ function ApprovalPage({ token }: { token: string }) {
   const [status, setStatus] = useState<'pending' | 'approved' | 'declined'>('pending');
 
   // ── Decode self-contained base64 payload (works in any browser / any device) ──
+  // Tries new base64url format first, falls back to old btoa(encodeURIComponent()) format
   let payload: any = null;
-  try { payload = JSON.parse(decodeURIComponent(atob(token))); } catch {}
+  try {
+    const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - b64.length % 4);
+    const binStr = atob(b64 + pad);
+    const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+    payload = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    try { payload = JSON.parse(decodeURIComponent(atob(token))); } catch {}
+  }
 
   // ── Fallback: local state lookup for old-style token links (same browser only) ──
   const docFromState = !payload
@@ -344,9 +353,14 @@ function AppContent() {
   const { state } = useApp();
 
   // Check for approval token in URL hash
+  // Supports both formats:
+  //   New: #approve/project-name-slug/TOKEN  (slug is human-readable, TOKEN is base64url)
+  //   Old: #approve/TOKEN                    (backward-compat)
   const hash = window.location.hash;
   if (hash.startsWith('#approve/')) {
-    const token = hash.slice(9);
+    const rest = hash.slice(9);
+    const slashIdx = rest.indexOf('/');
+    const token = slashIdx >= 0 ? rest.slice(slashIdx + 1) : rest;
     return <ApprovalPage token={token} />;
   }
 

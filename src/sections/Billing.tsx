@@ -751,7 +751,11 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                         tagline: billing.settings.tagline || '',
                         clientName: inv?.name || 'Client',
                       };
-                      const encoded = btoa(encodeURIComponent(JSON.stringify(approvalPayload)));
+                      // Unicode-safe base64url (no encodeURIComponent — ~40% shorter than old format)
+                      const _json = JSON.stringify(approvalPayload);
+                      const _bytes = new TextEncoder().encode(_json);
+                      const _binStr = Array.from(_bytes, (b: number) => String.fromCharCode(b)).join('');
+                      const encoded = btoa(_binStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
                       dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...selected, approvalToken: encoded, approvalOpenedCount: 0, updatedAt: new Date().toISOString() } });
                       setSelected({ ...selected, approvalToken: encoded, approvalOpenedCount: 0 });
                       toast({ title: '✓ Approval link generated' });
@@ -761,14 +765,29 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                   {selected.approvalToken && (() => {
                     let linkExpiry: string | null = null;
                     let isExpired = false;
+                    let slug = '';
                     try {
-                      const p = JSON.parse(decodeURIComponent(atob(selected.approvalToken)));
-                      if (p.expiresAt) { linkExpiry = p.expiresAt; isExpired = p.expiresAt < new Date().toISOString().slice(0, 10); }
+                      let p: any = null;
+                      try {
+                        // Try new base64url format
+                        const b64 = selected.approvalToken.replace(/-/g, '+').replace(/_/g, '/');
+                        const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - b64.length % 4);
+                        const binStr = atob(b64 + pad);
+                        const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+                        p = JSON.parse(new TextDecoder().decode(bytes));
+                      } catch {
+                        // Fall back to old format
+                        p = JSON.parse(decodeURIComponent(atob(selected.approvalToken)));
+                      }
+                      if (p?.expiresAt) { linkExpiry = p.expiresAt; isExpired = p.expiresAt < new Date().toISOString().slice(0, 10); }
+                      if (p?.projectName) { slug = p.projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) + '/'; }
                     } catch {}
+                    const origin = billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin;
+                    const approvalUrl = origin + '/#approve/' + slug + selected.approvalToken;
                     return (
                       <div className="space-y-1">
-                        <div className="flex items-center gap-1 p-2 bg-secondary/50 rounded text-[10px] font-mono break-all text-muted-foreground">{(billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken}</div>
-                        <Button size="sm" className="w-full text-xs h-7 gap-1.5 justify-start" variant="outline" onClick={() => { navigator.clipboard.writeText((billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin) + '/#approve/' + selected.approvalToken); toast({ title: 'Link copied!' }); }}>Copy Link</Button>
+                        <div className="flex items-center gap-1 p-2 bg-secondary/50 rounded text-[10px] font-mono break-all text-muted-foreground">{approvalUrl}</div>
+                        <Button size="sm" className="w-full text-xs h-7 gap-1.5 justify-start" variant="outline" onClick={() => { navigator.clipboard.writeText(approvalUrl); toast({ title: 'Link copied!' }); }}>Copy Link</Button>
                         {linkExpiry && <div className={`text-[10px] text-center ${isExpired ? 'text-destructive' : 'text-muted-foreground'}`}>{isExpired ? '⚠ Link expired' : `Expires ${linkExpiry}`}</div>}
                         {selected.approvalOpenedCount !== undefined && selected.approvalOpenedCount > 0 && <div className="text-[10px] text-muted-foreground text-center">Opened {selected.approvalOpenedCount}×</div>}
                       </div>
