@@ -3323,49 +3323,117 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
 
   const exportPDF = () => {
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-    const W = 210; const M = 18; let y = 20;
-    pdf.setFillColor('#FFFFFF'); pdf.rect(0, 0, W, 297, 'F');
-    pdf.setFontSize(18); pdf.setFont('helvetica','bold'); pdf.setTextColor('#000000');
-    pdf.text('Financial Report', M, y); y += 7;
-    pdf.setFontSize(10); pdf.setFont('helvetica','normal'); pdf.setTextColor('#666666');
-    pdf.text(billing.settings.companyName + ' · ' + periodLabels[period], M, y); y += 5;
-    pdf.text('Generated: ' + new Date().toLocaleDateString('en-GB'), M, y); y += 9;
-    pdf.setDrawColor('#CCCCCC'); pdf.line(M, y, W-M, y); y += 7;
-    pdf.setFontSize(11); pdf.setFont('helvetica','bold'); pdf.setTextColor('#000000');
-    [['Total Revenue (invoiced)', 'MK ' + totalRevenue.toLocaleString()],
-     ['Total Received (cash)', 'MK ' + totalReceived.toLocaleString()],
-     ['Total Expenses', 'MK ' + totalExpenses.toLocaleString()],
-     ['Net Profit / Loss', (netProfit >= 0 ? '+' : '') + 'MK ' + netProfit.toLocaleString()],
-     ['Profit Margin', profitMargin + '%'],
-     ['Tax Collected', 'MK ' + totalTax.toLocaleString()],
-     ['Outstanding', 'MK ' + totalOutstanding.toLocaleString()],
-    ].forEach(([lbl, val]) => { pdf.setFont('helvetica','normal'); pdf.text(lbl + ':', M, y); pdf.setFont('helvetica','bold'); pdf.text(val, W-M, y, { align:'right' }); y += 6; });
-    y += 4; pdf.setDrawColor('#CCCCCC'); pdf.line(M, y, W-M, y); y += 8;
-    if (monthlyData.length > 0) {
-      pdf.setFontSize(11); pdf.setFont('helvetica','bold'); pdf.text('Monthly Breakdown', M, y); y += 6;
-      pdf.setFontSize(9); pdf.setFont('helvetica','bold');
-      ['Month','Revenue','Received','Expenses','Profit / Loss'].forEach((h,i) => { pdf.text(h, [M,M+35,M+75,M+115,M+150][i], y); }); y += 4;
-      pdf.line(M, y, W-M, y); y += 4;
-      pdf.setFont('helvetica','normal');
-      monthlyData.forEach(row => {
-        if (y > 272) { pdf.addPage(); y = 18; }
-        const pl = (row.profit >= 0 ? '+' : '') + 'MK ' + row.profit.toLocaleString();
-        [row.label, 'MK ' + row.revenue.toLocaleString(), 'MK ' + row.received.toLocaleString(), 'MK ' + row.expenses.toLocaleString(), pl].forEach((v,i) => {
-          if (i === 4) { pdf.setTextColor(row.profit >= 0 ? '#15803d' : '#b91c1c'); }
-          pdf.text(v, [M,M+35,M+75,M+115,M+150][i], y);
-          pdf.setTextColor('#000000');
-        });
-        y += 5;
-      });
-      y += 4; pdf.line(M, y, W-M, y); y += 4;
-      pdf.setFont('helvetica','bold');
-      const totPl = (netProfit >= 0 ? '+' : '') + 'MK ' + netProfit.toLocaleString();
-      ['TOTAL', 'MK '+totalRevenue.toLocaleString(), 'MK '+totalReceived.toLocaleString(), 'MK '+totalExpenses.toLocaleString(), totPl].forEach((v,i) => {
-        if (i === 4) pdf.setTextColor(netProfit >= 0 ? '#15803d' : '#b91c1c');
-        pdf.text(v, [M,M+35,M+75,M+115,M+150][i], y);
-        pdf.setTextColor('#000000');
-      });
+    const W = 210; const M = 18; const CW = W - M * 2; let y = 20;
+
+    // ── Dark background ──
+    pdf.setFillColor('#0D0D0D'); pdf.rect(0, 0, W, 297, 'F');
+
+    // ── Logo ──
+    const logo = billing.settings.logoBase64;
+    if (logo) {
+      try {
+        const ext = logo.includes('image/png') ? 'PNG' : 'JPEG';
+        const ti = document.createElement('img'); ti.src = logo;
+        const nw = ti.naturalWidth || 400, nh = ti.naturalHeight || 120;
+        const lw = Math.min(Math.max(billing.settings.logoWidth || 50, 20), 80);
+        const lh = billing.settings.logoHeight && billing.settings.logoHeight > 0
+          ? billing.settings.logoHeight
+          : Math.min(Math.max(+(lw * nh / nw).toFixed(1), 7), 22);
+        pdf.addImage(logo, ext, M, y - 2, lw, lh);
+        y += lh + 2;
+      } catch {
+        pdf.setFontSize(22); pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor('#FFFFFF'); pdf.text('Inspire', M, y);
+        pdf.setTextColor('#73F764'); pdf.text('X', M + pdf.getTextWidth('Inspire'), y);
+        y += 7;
+      }
+    } else {
+      pdf.setFontSize(22); pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#FFFFFF'); pdf.text('Inspire', M, y);
+      pdf.setTextColor('#73F764'); pdf.text('X', M + pdf.getTextWidth('Inspire'), y);
+      y += 7;
     }
+
+    // ── Report label — top right ──
+    pdf.setFontSize(16); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#73F764');
+    pdf.text('FINANCIAL REPORT', W - M, 25, { align: 'right' });
+    pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
+    pdf.text(periodLabels[period], W - M, 31, { align: 'right' });
+
+    // ── Subtitle + divider ──
+    pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
+    pdf.text(billing.settings.companyName + ' · Financial Report', M, y); y += 3;
+    pdf.setDrawColor('#73F764'); pdf.setLineWidth(1);
+    pdf.line(M, y, W - M, y); y += 8;
+
+    // ── Summary rows ──
+    const summaryRows: [string, string, boolean?][] = [
+      ['Total Revenue (invoiced)', 'MK ' + totalRevenue.toLocaleString()],
+      ['Total Received (cash)', 'MK ' + totalReceived.toLocaleString(), true],
+      ['Total Expenses', 'MK ' + totalExpenses.toLocaleString()],
+      ['Net Profit / Loss', (netProfit >= 0 ? '+' : '') + 'MK ' + netProfit.toLocaleString(), true],
+      ['Profit Margin', profitMargin + '%'],
+      ['Tax Collected', 'MK ' + totalTax.toLocaleString()],
+      ['Outstanding', 'MK ' + totalOutstanding.toLocaleString()],
+    ];
+    summaryRows.forEach(([lbl, val, highlight]) => {
+      pdf.setFontSize(10); pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(highlight ? '#73F764' : '#CCCCCC');
+      pdf.text(lbl + ':', M, y);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(val, W - M, y, { align: 'right' });
+      y += 6;
+    });
+
+    y += 4;
+    pdf.setDrawColor('#555555'); pdf.setLineWidth(0.5); pdf.line(M, y, W - M, y); y += 8;
+
+    // ── Monthly breakdown table ──
+    if (monthlyData.length > 0) {
+      pdf.setFontSize(11); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#FFFFFF');
+      pdf.text('Monthly Breakdown', M, y); y += 6;
+
+      // Table header
+      pdf.setFillColor('#1a1a1a'); pdf.rect(M, y - 1, CW, 7, 'F');
+      pdf.setFontSize(8); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#888888');
+      const cols = [M + 2, M + 38, M + 78, M + 118, M + 155];
+      ['Month', 'Revenue', 'Received', 'Expenses', 'Profit / Loss'].forEach((h, i) => {
+        pdf.text(h, cols[i], y + 4);
+      });
+      y += 8;
+
+      pdf.setFontSize(9); pdf.setFont('helvetica', 'normal');
+      monthlyData.forEach((row, idx) => {
+        if (y > 272) { pdf.addPage(); pdf.setFillColor('#0D0D0D'); pdf.rect(0, 0, W, 297, 'F'); y = 18; }
+        if (idx % 2 === 0) { pdf.setFillColor('#111111'); pdf.rect(M, y - 1, CW, 7, 'F'); }
+        const pl = (row.profit >= 0 ? '+' : '') + 'MK ' + row.profit.toLocaleString();
+        [row.label, 'MK ' + row.revenue.toLocaleString(), 'MK ' + row.received.toLocaleString(), 'MK ' + row.expenses.toLocaleString(), pl].forEach((v, i) => {
+          pdf.setTextColor(i === 4 ? (row.profit >= 0 ? '#73F764' : '#f87171') : '#CCCCCC');
+          pdf.text(v, cols[i], y + 4);
+        });
+        y += 7;
+      });
+
+      y += 4;
+      pdf.setDrawColor('#555555'); pdf.setLineWidth(0.5); pdf.line(M, y, W - M, y); y += 5;
+
+      // Totals row
+      pdf.setFillColor('#1a1a1a'); pdf.rect(M, y - 1, CW, 7, 'F');
+      pdf.setFont('helvetica', 'bold');
+      const totPl = (netProfit >= 0 ? '+' : '') + 'MK ' + netProfit.toLocaleString();
+      ['TOTAL', 'MK ' + totalRevenue.toLocaleString(), 'MK ' + totalReceived.toLocaleString(), 'MK ' + totalExpenses.toLocaleString(), totPl].forEach((v, i) => {
+        pdf.setTextColor(i === 4 ? (netProfit >= 0 ? '#73F764' : '#f87171') : '#FFFFFF');
+        pdf.text(v, cols[i], y + 4);
+      });
+      y += 10;
+    }
+
+    // ── Footer ──
+    pdf.setDrawColor('#333333'); pdf.setLineWidth(0.2); pdf.line(M, y, W - M, y); y += 4;
+    pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
+    pdf.text('Generated by InspireX OS · ' + billing.settings.companyName, M, y);
+    pdf.text(new Date().toLocaleDateString('en-GB'), W - M, y, { align: 'right' });
+
     pdf.save('financial-report-' + period + '-' + currentYear + '.pdf');
   };
 
