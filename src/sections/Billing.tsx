@@ -3354,15 +3354,13 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
       y += 7;
     }
 
-    // ── Report label — top right ──
+    // ── Report label — top right (aligned with logo) ──
     pdf.setFontSize(16); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#73F764');
     pdf.text('FINANCIAL REPORT', W - M, 25, { align: 'right' });
     pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
     pdf.text(periodLabels[period], W - M, 31, { align: 'right' });
 
-    // ── Subtitle + divider ──
-    pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#888888');
-    pdf.text(billing.settings.companyName + ' · Financial Report', M, y); y += 3;
+    // ── Green divider ──
     pdf.setDrawColor('#73F764'); pdf.setLineWidth(1);
     pdf.line(M, y, W - M, y); y += 8;
 

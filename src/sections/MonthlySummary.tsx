@@ -358,7 +358,6 @@ export function MonthlySummary() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
-    const contentWidth = pageWidth - margin * 2;
     let y = 20;
 
     // ── Dark background ──
@@ -393,6 +392,7 @@ export function MonthlySummary() {
 
     // ── Logo / Header ──
     const billingLogo = state.billing.settings.logoBase64;
+    const headerStartY = y;
     if (billingLogo) {
       try {
         const ext = billingLogo.includes('image/png') ? 'PNG' : 'JPEG';
@@ -418,39 +418,41 @@ export function MonthlySummary() {
       doc.setTextColor('#73F764'); doc.text('X', margin + iw, y);
       y += 7;
     }
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor('#888888');
-    doc.text(`${state.settings.companyName} · Monthly Earnings Receipt`, margin, y);
-    y += 3;
+
+    // ── RECEIPT label — top right (aligned with logo) ──
+    doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.setTextColor('#73F764');
+    doc.text('RECEIPT', pageWidth - margin, headerStartY + 6, { align: 'right' });
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor('#888888');
+    doc.text('Monthly Earnings', pageWidth - margin, headerStartY + 13, { align: 'right' });
+
+    // ── Green divider ──
     doc.setDrawColor('#73F764');
     doc.setLineWidth(1);
     doc.line(margin, y, pageWidth - margin, y);
     y += 8;
 
-    // ── Meta ──
-    doc.setFontSize(9);
+    // ── Meta — left col left-aligned, right col right-aligned ──
+    doc.setFontSize(8);
     doc.setTextColor('#888888');
-    const col2 = margin + contentWidth / 2;
     doc.text('TEAM MEMBER', margin, y);
-    doc.text('ROLE', col2, y);
+    doc.text('ROLE', pageWidth - margin, y, { align: 'right' });
     y += 4;
     doc.setFontSize(11);
     doc.setTextColor('#FFFFFF');
     doc.setFont('helvetica', 'bold');
     doc.text(memberName, margin, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(member.role, col2, y);
+    doc.text(member.role, pageWidth - margin, y, { align: 'right' });
     y += 7;
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor('#888888');
     doc.text('MONTH', margin, y);
-    doc.text('EMPLOYMENT TYPE', col2, y);
+    doc.text('EMPLOYMENT TYPE', pageWidth - margin, y, { align: 'right' });
     y += 4;
     doc.setFontSize(11);
     doc.setTextColor('#FFFFFF');
     doc.text(monthLabel, margin, y);
-    doc.text(member.type, col2, y);
+    doc.text(member.type, pageWidth - margin, y, { align: 'right' });
     y += 10;
 
     // ── Earnings ──
