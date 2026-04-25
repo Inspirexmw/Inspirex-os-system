@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import type { 
-  AppState, 
-  TeamMember, 
-  Project, 
-  WorkLogEntry, 
+import type {
+  AppState,
+  TeamMember,
+  Project,
+  WorkLogEntry,
   SystemSettings,
   CommitmentData,
   MonthlyStipendBreakdown,
@@ -19,6 +19,9 @@ import type {
   Expense,
   RecurringSchedule,
   AppNotification,
+  TaskProject,
+  TaskProjectScore,
+  ProjectDistribution,
 } from '@/types';
 import { 
   DEFAULT_SETTINGS, 
@@ -50,6 +53,7 @@ const initialBillingState: BillingState = {
 const initialState: AppState = {
   members: generateDefaultMembers(),
   projects: [],
+  taskProjects: [],
   workLog: [],
   settings: DEFAULT_SETTINGS,
   wcTransactions: [],
@@ -114,9 +118,13 @@ type Action =
   | { type: 'EXPENSE_ADD'; payload: Expense }
   | { type: 'EXPENSE_UPDATE'; payload: Expense }
   | { type: 'EXPENSE_DELETE'; payload: string }
-  | { type: 'ADD_PROJECT_TASK'; payload: { projectId: string; task: import('@/types').ProjectTask } }
-  | { type: 'UPDATE_PROJECT_TASK'; payload: { projectId: string; taskId: string; updates: Partial<import('@/types').ProjectTask> } }
-  | { type: 'DELETE_PROJECT_TASK'; payload: { projectId: string; taskId: string } };
+  | { type: 'ADD_PROJECT_TASK'; payload: { taskProjectId: string; task: import('@/types').ProjectTask } }
+  | { type: 'UPDATE_PROJECT_TASK'; payload: { taskProjectId: string; taskId: string; updates: Partial<import('@/types').ProjectTask> } }
+  | { type: 'DELETE_PROJECT_TASK'; payload: { taskProjectId: string; taskId: string } }
+  | { type: 'ADD_TASK_PROJECT'; payload: TaskProject }
+  | { type: 'UPDATE_TASK_PROJECT'; payload: TaskProject }
+  | { type: 'DELETE_TASK_PROJECT'; payload: string }
+  | { type: 'SAVE_PROJECT_SCORES'; payload: { taskProjectId: string; scores: TaskProjectScore[] } };
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -160,6 +168,7 @@ function appReducer(state: AppState, action: Action): AppState {
           tasks: [],
           ...p,
         })),
+        taskProjects: action.payload.taskProjects || [],
         notifications: action.payload.notifications || [],
         lastAutoTransferMonth: action.payload.lastAutoTransferMonth || '',
         settings: {
@@ -208,30 +217,72 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'ADD_PROJECT_TASK':
       return {
         ...state,
-        projects: state.projects.map(p =>
-          p.id === action.payload.projectId
-            ? { ...p, tasks: [...(p.tasks || []), action.payload.task] }
-            : p
+        taskProjects: (state.taskProjects || []).map(tp =>
+          tp.id === action.payload.taskProjectId
+            ? { ...tp, tasks: [...(tp.tasks || []), action.payload.task] }
+            : tp
         ),
       };
     case 'UPDATE_PROJECT_TASK':
       return {
         ...state,
-        projects: state.projects.map(p =>
-          p.id === action.payload.projectId
-            ? { ...p, tasks: (p.tasks || []).map(t => t.id === action.payload.taskId ? { ...t, ...action.payload.updates } : t) }
-            : p
+        taskProjects: (state.taskProjects || []).map(tp =>
+          tp.id === action.payload.taskProjectId
+            ? { ...tp, tasks: (tp.tasks || []).map(t => t.id === action.payload.taskId ? { ...t, ...action.payload.updates } : t) }
+            : tp
         ),
       };
     case 'DELETE_PROJECT_TASK':
       return {
         ...state,
-        projects: state.projects.map(p =>
-          p.id === action.payload.projectId
-            ? { ...p, tasks: (p.tasks || []).filter(t => t.id !== action.payload.taskId) }
-            : p
+        taskProjects: (state.taskProjects || []).map(tp =>
+          tp.id === action.payload.taskProjectId
+            ? { ...tp, tasks: (tp.tasks || []).filter(t => t.id !== action.payload.taskId) }
+            : tp
         ),
       };
+    case 'ADD_TASK_PROJECT':
+      return { ...state, taskProjects: [...(state.taskProjects || []), action.payload] };
+    case 'UPDATE_TASK_PROJECT':
+      return { ...state, taskProjects: (state.taskProjects || []).map(tp => tp.id === action.payload.id ? action.payload : tp) };
+    case 'DELETE_TASK_PROJECT':
+      return { ...state, taskProjects: (state.taskProjects || []).filter(tp => tp.id !== action.payload) };
+    case 'SAVE_PROJECT_SCORES': {
+      const { taskProjectId, scores } = action.payload;
+      const taskProject = (state.taskProjects || []).find(tp => tp.id === taskProjectId);
+      const updatedTaskProjects = (state.taskProjects || []).map(tp =>
+        tp.id === taskProjectId ? { ...tp, scores } : tp
+      );
+      // Update matching Calculator project distribution if linked by billingInvoiceId
+      let updatedProjects = state.projects;
+      if (taskProject?.billingInvoiceId) {
+        const linkedProject = state.projects.find(p => p.billingInvoiceId === taskProject.billingInvoiceId);
+        if (linkedProject) {
+          const totalPts = scores.reduce((s, sc) => s + sc.totalPoints, 0);
+          const newDist: ProjectDistribution[] = scores
+            .filter(sc => sc.totalPoints > 0)
+            .map(sc => {
+              const member = state.members.find(m => m.id === sc.memberId);
+              const share = totalPts > 0 ? sc.totalPoints / totalPts : 0;
+              const base = linkedProject.bonusPool * share;
+              return {
+                memberId: sc.memberId,
+                memberName: member?.name || '',
+                scores: { deliverables: sc.deliverables, responsibility: sc.responsibility, quality: sc.quality },
+                totalScore: sc.totalPoints,
+                sharePercent: share * 100,
+                baseBonus: Math.round(base),
+                performanceMultiplier: 1.0,
+                finalBonus: Math.round(base),
+              };
+            });
+          updatedProjects = state.projects.map(p =>
+            p.id === linkedProject.id ? { ...p, distribution: newDist } : p
+          );
+        }
+      }
+      return { ...state, taskProjects: updatedTaskProjects, projects: updatedProjects };
+    }
     case 'ADD_WORK_LOG':
       return { ...state, workLog: [...state.workLog, action.payload] };
     case 'UPDATE_WORK_LOG':

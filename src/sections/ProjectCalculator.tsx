@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Save, Download, Trash2, History, Copy, AlertTriangle, Info, Plus } from 'lucide-react';
+import { Save, Download, Trash2, History, Copy, AlertTriangle, Info } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,27 +10,22 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useApp } from '@/hooks/useAppState';
 import { useToast } from '@/hooks/use-toast';
-import type { DimensionScores, ProjectDistribution, WorkType, Project, WorkLogEntry, ProjectTask, TeamMember } from '@/types';
-
-interface MemberScore {
-  memberId: string;
-  scores: DimensionScores;
-}
+import type { ProjectDistribution, WorkType, Project, TeamMember } from '@/types';
 
 const TYPE_CONFIG: Record<WorkType, { badge: string; desc: string; color: string }> = {
   client: {
     badge: 'Revenue-generating',
-    desc: 'Generates revenue. Triggers 60/40 split. Bonus pool distributed to team based on involvement scores.',
+    desc: 'Generates revenue. Triggers 60/40 split. Bonus pool distributed to team based on involvement scores (set in Tasks & Scoring).',
     color: 'border-primary/30 bg-primary/5',
   },
   internal: {
     badge: 'Non-revenue',
-    desc: 'No revenue. Builds InspireX systems and capacity. Scores feed the Contribution Bank.',
+    desc: 'No revenue. Builds InspireX systems and capacity. Scores feed the Contribution Bank (set in Tasks & Scoring).',
     color: 'border-blue-500/30 bg-blue-500/5',
   },
   impression: {
     badge: 'Non-revenue',
-    desc: 'No revenue. Portfolio and visibility work. Same quality standard as paid work. Scores feed the Contribution Bank.',
+    desc: 'No revenue. Portfolio and visibility work. Same quality standard as paid work. Scores feed the Contribution Bank (set in Tasks & Scoring).',
     color: 'border-amber-500/30 bg-amber-500/5',
   },
 };
@@ -40,7 +35,7 @@ export function ProjectCalculator() {
   const { toast } = useToast();
 
   const activeMembers = getActiveMembers();
-  const { scoringWeights, revenueSplit } = state.settings;
+  const { revenueSplit } = state.settings;
 
   const [projectName, setProjectName] = useState('');
   const [projectType, setProjectType] = useState<WorkType>('client');
@@ -50,6 +45,7 @@ export function ProjectCalculator() {
   const [directExpenses, setDirectExpenses] = useState('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
+  const [showHistory, setShowHistory] = useState(true);
 
   // Billing data
   const billingInvoices = (state.billing?.documents || []).filter((d: any) => d.type === 'invoice');
@@ -63,21 +59,15 @@ export function ProjectCalculator() {
     const inv = billingInvoices.find((i: any) => i.id === invoiceId);
     if (!inv) return;
     setRevenue(String(Math.round(inv.total * (inv.exchangeRate || 1))));
-    // Pull project name: invoice.projectName → first line item title → invoice number
     const autoName = inv.projectName
       || (inv.lineItems?.[0]?.description?.split('\n')[0]?.trim())
       || inv.number
       || '';
-    setProjectName(autoName); // always override — invoice is the source of truth
-    // Auto-pull project costs linked to this invoice
+    setProjectName(autoName);
     const linked = billingExpenses.filter((e: any) => e.invoiceId === invoiceId);
     const totalCosts = linked.reduce((s: number, e: any) => s + e.amount, 0);
     setDirectExpenses(totalCosts > 0 ? String(totalCosts) : '');
   };
-  const [memberScores, setMemberScores] = useState<MemberScore[]>(
-    activeMembers.map(m => ({ memberId: m.id, scores: { deliverables: 0, responsibility: 0, quality: 0 } }))
-  );
-  const [showHistory, setShowHistory] = useState(true);
 
   const isClient = projectType === 'client';
 
@@ -91,35 +81,6 @@ export function ProjectCalculator() {
     return { rev, exp, grossProfit, bonusPool, companyContribution };
   }, [revenue, directExpenses, revenueSplit, isClient]);
 
-  const distribution = useMemo((): ProjectDistribution[] => {
-    const totalScore = memberScores.reduce((sum, ms) =>
-      sum + ms.scores.deliverables + ms.scores.responsibility + ms.scores.quality, 0);
-    return memberScores.map(ms => {
-      const member = activeMembers.find(m => m.id === ms.memberId);
-      const memberTotalScore = ms.scores.deliverables + ms.scores.responsibility + ms.scores.quality;
-      const sharePercent = isClient && totalScore > 0 ? memberTotalScore / totalScore : 0;
-      const baseBonus = isClient ? calculations.bonusPool * sharePercent : 0;
-      return {
-        memberId: ms.memberId,
-        memberName: member?.name || 'Unknown',
-        scores: ms.scores,
-        totalScore: memberTotalScore,
-        sharePercent: sharePercent * 100,
-        baseBonus: Math.round(baseBonus),
-        performanceMultiplier: 1.0,
-        finalBonus: Math.round(baseBonus),
-      };
-    });
-  }, [memberScores, calculations.bonusPool, activeMembers, isClient]);
-
-  const updateScore = useCallback((memberId: string, dimension: keyof DimensionScores, value: string) => {
-    const maxValue = scoringWeights[dimension];
-    const numValue = Math.min(parseInt(value) || 0, maxValue);
-    setMemberScores(prev => prev.map(ms =>
-      ms.memberId === memberId ? { ...ms, scores: { ...ms.scores, [dimension]: numValue } } : ms
-    ));
-  }, [scoringWeights]);
-
   const handleTypeChange = useCallback((type: WorkType) => {
     setProjectType(type);
     setRevenue('');
@@ -128,7 +89,6 @@ export function ProjectCalculator() {
   }, []);
 
   const saveProject = useCallback(() => {
-    // Auto-resolve project name from linked invoice if blank
     const resolvedName = projectName.trim() || (() => {
       const inv = billingInvoices.find((i: any) => i.id === linkedInvoiceId);
       return inv?.projectName || inv?.number || '';
@@ -141,22 +101,7 @@ export function ProjectCalculator() {
       toast({ title: 'Error', description: 'Please enter revenue for this client project', variant: 'destructive' });
       return;
     }
-    const hasAnyScore = memberScores.some(ms =>
-      ms.scores.deliverables + ms.scores.responsibility + ms.scores.quality > 0
-    );
-    if (!hasAnyScore) {
-      toast({ title: 'Error', description: 'Score at least one team member before saving', variant: 'destructive' });
-      return;
-    }
 
-    // No multiplier — finalBonus = baseBonus directly from involvement scores
-    const distributionWithMultipliers = distribution.map(d => ({
-      ...d,
-      performanceMultiplier: 1.0,
-      finalBonus: d.baseBonus,
-    }));
-
-    // Get client info from linked invoice
     const linkedInv = billingInvoices.find((i: any) => i.id === linkedInvoiceId);
     const linkedClient = linkedInv ? billingClients.find((c: any) => c.id === linkedInv.clientId) : null;
 
@@ -170,7 +115,7 @@ export function ProjectCalculator() {
       netProfit: calculations.grossProfit,
       bonusPool: calculations.bonusPool,
       companyContribution: calculations.companyContribution,
-      distribution: distributionWithMultipliers,
+      distribution: [],          // populated by Tasks & Scoring → SAVE_PROJECT_SCORES
       createdAt: new Date().toISOString(),
       notes: notes.trim() || undefined,
       payments: [],
@@ -184,7 +129,6 @@ export function ProjectCalculator() {
     dispatch({ type: 'ADD_PROJECT', payload: newProject });
 
     // Retroactively accrue retained profit for payments already on the linked invoice
-    // (fires when invoice was paid before the project was saved in calculator)
     if (linkedInv && linkedInv.payments?.length > 0 && calculations.rev > 0) {
       const costsRatio = calculations.exp / calculations.rev;
       const companyPct = (state.settings.revenueSplit?.companyPercent ?? 60) / 100;
@@ -197,53 +141,16 @@ export function ProjectCalculator() {
       });
     }
 
-    // AUTO-CREATE WORK LOG ENTRIES for every scored member
-    const today = new Date().toISOString().slice(0, 10);
-    const workLogEntries: WorkLogEntry[] = memberScores
-      .filter(ms => ms.scores.deliverables + ms.scores.responsibility + ms.scores.quality > 0)
-      .map(ms => {
-        const member = activeMembers.find(m => m.id === ms.memberId);
-        const totalPts = ms.scores.deliverables + ms.scores.responsibility + ms.scores.quality;
-        return {
-          id: `${Date.now()}-${ms.memberId}`,
-          memberId: ms.memberId,
-          memberName: member?.name || 'Unknown',
-          projectId: newProject.id,
-          projectName: newProject.name,
-          type: projectType,
-          date: today,
-          task: newProject.name,
-          scores: { ...ms.scores },
-          totalPoints: totalPts,
-          notes: undefined,
-        };
-      });
-
-    workLogEntries.forEach(entry => {
-      dispatch({ type: 'ADD_WORK_LOG', payload: entry });
-      if (projectType === 'internal' || projectType === 'impression') {
-        // Only non-contract members accumulate contribution bank points
-        const member = activeMembers.find(m => m.id === entry.memberId);
-        if (member && member.type !== 'Contract') {
-          dispatch({
-            type: 'UPDATE_CONTRIBUTION_BANK',
-            payload: { memberId: entry.memberId, points: entry.totalPoints, quarter: state.currentQuarter },
-          });
-        }
-      }
-    });
-
     // Reset form
     setProjectName(''); setRevenue(''); setDirectExpenses('');
     setDescription(''); setNotes('');
     setLinkedInvoiceId('');
-    setMemberScores(activeMembers.map(m => ({ memberId: m.id, scores: { deliverables: 0, responsibility: 0, quality: 0 } })));
 
     toast({
       title: '✓ Project saved',
-      description: `"${newProject.name}" saved. ${workLogEntries.length} work log entries created automatically.`,
+      description: `"${newProject.name}" saved. Go to Tasks & Scoring to assign team scores.`,
     });
-  }, [projectName, projectType, isClient, month, calculations, distribution, notes, dispatch, toast, activeMembers, memberScores, state.currentQuarter, linkedInvoiceId, billingInvoices, billingClients]);
+  }, [projectName, projectType, isClient, month, calculations, notes, dispatch, toast, linkedInvoiceId, billingInvoices, billingClients, state.settings.revenueSplit]);
 
   const deleteProject = useCallback((id: string) => {
     if (confirm('Delete this project?')) {
@@ -260,13 +167,9 @@ export function ProjectCalculator() {
     setDirectExpenses(project.directExpenses.toString());
     setNotes(project.notes || '');
     setLinkedInvoiceId(project.billingInvoiceId || '');
-    setMemberScores(activeMembers.map(m => {
-      const dist = project.distribution.find(d => d.memberId === m.id);
-      return { memberId: m.id, scores: dist?.scores || { deliverables: 0, responsibility: 0, quality: 0 } };
-    }));
     toast({ title: 'Loaded', description: 'Project loaded for editing' });
     setShowHistory(false);
-  }, [activeMembers, toast]);
+  }, [toast]);
 
   const exportCSV = useCallback(() => {
     if (!state.projects.length) { toast({ title: 'No projects to export', variant: 'destructive' }); return; }
@@ -292,7 +195,7 @@ export function ProjectCalculator() {
         <div>
           <h1 className="text-2xl font-semibold">Project Calculator</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Score your team here. Work log entries are created automatically when you save.
+            Financial records only. Team scoring is handled in <strong>Tasks &amp; Scoring</strong>.
           </p>
         </div>
         <div className="flex gap-2 no-print">
@@ -338,7 +241,7 @@ export function ProjectCalculator() {
         <>
           <Card className="bg-card border-border">
             <CardHeader className="pb-3">
-              <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 2 — Invoice & Project Details</CardTitle>
+              <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 2 — Invoice &amp; Project Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
 
@@ -357,7 +260,7 @@ export function ProjectCalculator() {
                 </Select>
               </div>
 
-              {/* Invoice snapshot — shown after selection */}
+              {/* Invoice snapshot */}
               {linkedInvoiceId && (() => {
                 const inv = billingInvoices.find((i: any) => i.id === linkedInvoiceId);
                 const client = inv ? billingClients.find((c: any) => c.id === inv.clientId) : null;
@@ -390,7 +293,7 @@ export function ProjectCalculator() {
                 ) : null;
               })()}
 
-              {/* Project name + month — same row, name always visible */}
+              {/* Project name + month */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Project Name</Label>
@@ -403,9 +306,6 @@ export function ProjectCalculator() {
                   {linkedInvoiceId && projectName && (
                     <p className="text-[10px] text-primary/70">↑ Pulled from invoice — edit to override</p>
                   )}
-                  {linkedInvoiceId && !projectName && (
-                    <p className="text-xs text-amber-400">Waiting for invoice selection</p>
-                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Month</Label>
@@ -413,7 +313,7 @@ export function ProjectCalculator() {
                 </div>
               </div>
 
-              {/* Revenue + costs — editable override */}
+              {/* Revenue + costs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Revenue ({state.settings.currencySymbol})</Label>
@@ -502,108 +402,10 @@ export function ProjectCalculator() {
         </Card>
       )}
 
-      {/* STEP 4 — Involvement Scoring (ALL project types) */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Step 3 — Involvement Scoring — enter 0 if member was not involved
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!isClient && (
-            <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
-              💡 Scores for {projectType} projects feed each member's <strong className="text-primary">Contribution Bank</strong> this quarter.
-              Work log entries are created automatically when you save. No immediate bonus — reward pays at quarter end.
-            </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Member</th>
-                  <th className="text-center py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Deliverables /{scoringWeights.deliverables}</th>
-                  <th className="text-center py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Responsibility /{scoringWeights.responsibility}</th>
-                  <th className="text-center py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Quality /{scoringWeights.quality}</th>
-                  <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Total Pts</th>
-                  {isClient && (
-                    <>
-                      <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Share</th>
-                      <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground uppercase">Bonus</th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {activeMembers.map(member => {
-                  const ms = memberScores.find(s => s.memberId === member.id);
-                  const dist = distribution.find(d => d.memberId === member.id);
-                  const totalScore = ms ? ms.scores.deliverables + ms.scores.responsibility + ms.scores.quality : 0;
-                  return (
-                    <tr key={member.id} className="border-b border-border/50">
-                      <td className="py-3 px-3">
-                        <div className="font-medium text-sm">{member.name}</div>
-                        <div className="text-xs text-muted-foreground">{member.role}</div>
-                        <div className="flex gap-1 mt-1">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                            member.type === 'Founder' ? 'bg-primary/20 text-primary' :
-                            member.type === 'Full-time' ? 'bg-green-500/20 text-green-400' :
-                            member.type === 'Part-time' ? 'bg-blue-500/20 text-blue-400' :
-                            'bg-amber-500/20 text-amber-400'}`}>
-                            {member.type}
-                          </span>
-                          {member.stipend === 0 && member.type !== 'Founder' && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Bonus only</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <Input type="number" min={0} max={scoringWeights.deliverables}
-                          value={ms?.scores.deliverables || 0}
-                          onChange={e => updateScore(member.id, 'deliverables', e.target.value)}
-                          className="w-20 mx-auto text-center bg-secondary border-input" />
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <Input type="number" min={0} max={scoringWeights.responsibility}
-                          value={ms?.scores.responsibility || 0}
-                          onChange={e => updateScore(member.id, 'responsibility', e.target.value)}
-                          className="w-20 mx-auto text-center bg-secondary border-input" />
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <Input type="number" min={0} max={scoringWeights.quality}
-                          value={ms?.scores.quality || 0}
-                          onChange={e => updateScore(member.id, 'quality', e.target.value)}
-                          className="w-20 mx-auto text-center bg-secondary border-input" />
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <div className="text-sm font-semibold text-primary">{totalScore} pts</div>
-                      </td>
-                      {isClient && (
-                        <>
-                          <td className="py-3 px-3 text-right">
-                            <div className="text-sm font-medium">{dist?.sharePercent.toFixed(1)}%</div>
-                            <div className="w-20 h-1 bg-secondary rounded-full ml-auto mt-1 overflow-hidden">
-                              <div className="h-full bg-primary rounded-full transition-all"
-                                style={{ width: `${dist?.sharePercent || 0}%` }} />
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="text-sm font-semibold text-primary">{formatCurrency(dist?.finalBonus || 0)}</div>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Save */}
       <div className="flex justify-between items-center no-print flex-wrap gap-3">
         <p className="text-xs text-muted-foreground">
-          Saving will create work log entries automatically for all scored members.
+          After saving, go to <strong>Tasks &amp; Scoring</strong> to assign team involvement scores and generate bonus distribution.
         </p>
         <Button onClick={saveProject} className="bg-primary text-primary-foreground hover:bg-primary/90" size="lg">
           <Save className="w-4 h-4 mr-2" />Save Project
@@ -650,13 +452,6 @@ export function ProjectCalculator() {
 const AVATAR_COLORS = ['bg-blue-500','bg-purple-500','bg-green-500','bg-amber-500','bg-rose-500','bg-cyan-500','bg-indigo-500'];
 const mkAvatarColor = (id: string) => AVATAR_COLORS[(id?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length];
 const mkInitials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-const mkTaskId = () => `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-const SCORING_QUESTIONS = [
-  ['Did they produce the majority of client-facing outputs?', 'Were their deliverables used without major rework?'],
-  ['Did they complete tasks without being chased?', 'Did they flag problems early or communicate proactively?'],
-  ['Was their work portfolio-worthy without hesitation?', 'How many revision rounds were needed — and why?'],
-];
 
 // ─── Project History Card ─────────────────────────────────────────────────────
 
@@ -670,87 +465,9 @@ interface ProjectHistoryCardProps {
   onDelete: () => void;
 }
 
-function ProjectHistoryCard({ project, members, formatCurrency, dispatch, toast, onDuplicate, onDelete }: ProjectHistoryCardProps) {
-  const [tab, setTab] = useState<'overview' | 'tasks' | 'scoring'>('overview');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newTaskMemberId, setNewTaskMemberId] = useState('');
-
-  const tasks = project.tasks || [];
-  const activeMembers = members.filter(m => m.isActive);
+function ProjectHistoryCard({ project, members, formatCurrency, onDuplicate, onDelete }: ProjectHistoryCardProps) {
   const isClient = project.type === 'client';
-  const totalTasks = tasks.length;
-  const doneTasks = tasks.filter(t => t.status === 'done').length;
-  const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-
-  const calcAutoDeliverables = (memberId: string) => {
-    const total = tasks.filter(t => t.status === 'done').length;
-    const md = tasks.filter(t => t.status === 'done' && t.assignedMemberId === memberId).length;
-    return total > 0 ? Math.round((md / total) * 30) : 0;
-  };
-
-  const [scoringState, setScoringState] = useState(() =>
-    activeMembers.map(m => {
-      const existing = project.distribution.find(d => d.memberId === m.id);
-      return {
-        memberId: m.id,
-        deliverables: existing?.scores.deliverables ?? calcAutoDeliverables(m.id),
-        responsibility: existing?.scores.responsibility ?? 0,
-        quality: existing?.scores.quality ?? 0,
-      };
-    })
-  );
-
-  const updateScore = (memberId: string, field: 'deliverables' | 'responsibility' | 'quality', val: number) =>
-    setScoringState(prev => prev.map(s => s.memberId === memberId ? { ...s, [field]: val } : s));
-
-  const handleAddTask = () => {
-    if (!newTaskDesc.trim()) { toast({ title: 'Enter a task description', variant: 'destructive' }); return; }
-    if (!newTaskMemberId) { toast({ title: 'Select a member', variant: 'destructive' }); return; }
-    const task: ProjectTask = {
-      id: mkTaskId(),
-      description: newTaskDesc.trim(),
-      assignedMemberId: newTaskMemberId,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: 'ADD_PROJECT_TASK', payload: { projectId: project.id, task } });
-    setNewTaskDesc('');
-    toast({ title: '✓ Task added' });
-  };
-
-  const handleToggleTask = (task: ProjectTask) => {
-    const done = task.status === 'done';
-    dispatch({ type: 'UPDATE_PROJECT_TASK', payload: {
-      projectId: project.id, taskId: task.id,
-      updates: { status: done ? 'pending' : 'done', completedAt: done ? undefined : new Date().toISOString() },
-    }});
-  };
-
-  const handleCycleStatus = (task: ProjectTask) => {
-    const next: Record<ProjectTask['status'], ProjectTask['status']> = { pending: 'in-progress', 'in-progress': 'done', done: 'pending' };
-    dispatch({ type: 'UPDATE_PROJECT_TASK', payload: {
-      projectId: project.id, taskId: task.id,
-      updates: { status: next[task.status], completedAt: next[task.status] === 'done' ? new Date().toISOString() : undefined },
-    }});
-  };
-
-  const handleSaveScores = () => {
-    for (const s of scoringState) {
-      if (s.deliverables < 0 || s.deliverables > 30) { toast({ title: 'Deliverables must be 0–30', variant: 'destructive' }); return; }
-      if (s.responsibility < 0 || s.responsibility > 35) { toast({ title: 'Responsibility must be 0–35', variant: 'destructive' }); return; }
-      if (s.quality < 0 || s.quality > 35) { toast({ title: 'Quality must be 0–35', variant: 'destructive' }); return; }
-    }
-    const totalAll = scoringState.reduce((s, m) => s + m.deliverables + m.responsibility + m.quality, 0);
-    const newDist: ProjectDistribution[] = scoringState.map(s => {
-      const member = members.find(m => m.id === s.memberId);
-      const ts = s.deliverables + s.responsibility + s.quality;
-      const share = totalAll > 0 ? (ts / totalAll) * 100 : 0;
-      const base = project.bonusPool * share / 100;
-      return { memberId: s.memberId, memberName: member?.name || '', scores: { deliverables: s.deliverables, responsibility: s.responsibility, quality: s.quality }, totalScore: ts, sharePercent: share, baseBonus: base, performanceMultiplier: 1.0, finalBonus: base };
-    });
-    dispatch({ type: 'UPDATE_PROJECT', payload: { ...project, distribution: newDist } });
-    toast({ title: '✓ Scores saved' });
-  };
+  const hasDistribution = project.distribution && project.distribution.length > 0;
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-secondary/10">
@@ -779,7 +496,11 @@ function ProjectHistoryCard({ project, members, formatCurrency, dispatch, toast,
               </div>
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground mt-1">{project.distribution.filter(d => d.totalScore > 0).length} members scored · Contribution Bank</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {hasDistribution
+                ? `${project.distribution.filter((d: ProjectDistribution) => d.totalScore > 0).length} members scored · Contribution Bank`
+                : 'No scores yet — score in Tasks & Scoring'}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-1 no-print">
@@ -788,25 +509,10 @@ function ProjectHistoryCard({ project, members, formatCurrency, dispatch, toast,
         </div>
       </div>
 
-      {/* ── Tab bar ── */}
-      <div className="border-t border-border flex bg-secondary/10">
-        {(['overview', 'tasks', 'scoring'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-medium transition-colors ${tab === t ? 'border-b-2 border-primary text-primary bg-primary/5' : 'text-muted-foreground hover:text-foreground'}`}>
-            {t === 'tasks' ? `Tasks${totalTasks > 0 ? ` (${doneTasks}/${totalTasks})` : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Overview tab ── */}
-      {tab === 'overview' && isClient && (
-        <div className="bg-secondary/20 px-4 py-3 space-y-3">
-          {project.directExpenses > 0 && (
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-muted-foreground">Direct Expenses: <span className="text-foreground font-medium">{formatCurrency(project.directExpenses)}</span></div>
-              <span className="text-[10px] text-primary/60">Via Billing → Project Costs</span>
-            </div>
-          )}
+      {/* ── Bonus distribution (client) or payment info ── */}
+      {isClient && (
+        <div className="border-t border-border bg-secondary/20 px-4 py-3 space-y-3">
+          {/* Payment status */}
           {project.billingInvoiceId ? (
             <div className={`flex items-center justify-between p-2.5 rounded-lg text-xs ${project.paymentStatus === 'confirmed' ? 'bg-primary/10 text-primary' : project.paymentStatus === 'partial' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'}`}>
               <span>
@@ -819,168 +525,59 @@ function ProjectHistoryCard({ project, members, formatCurrency, dispatch, toast,
           ) : (
             <div className="text-xs text-muted-foreground bg-secondary/30 rounded p-2">Link this project to a Billing invoice in Step 2 to track payments here.</div>
           )}
-        </div>
-      )}
 
-      {/* ── Tasks tab ── */}
-      {tab === 'tasks' && (
-        <div className="px-4 py-3 space-y-3">
-
-          {/* Summary bar */}
-          {totalTasks > 0 && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex gap-3">
-                  <span className="text-muted-foreground">Total <span className="text-foreground font-medium">{totalTasks}</span></span>
-                  <span className="text-primary">Done <span className="font-medium">{doneTasks}</span></span>
-                  <span className="text-amber-400">Remaining <span className="font-medium">{totalTasks - doneTasks}</span></span>
-                </div>
-                <span className="text-muted-foreground">{progressPct}%</span>
-              </div>
-              <Progress value={progressPct} className="h-1.5" />
-            </div>
-          )}
-
-          {/* Task list */}
-          {tasks.length > 0 ? (
-            <div className="space-y-1">
-              {tasks.map(task => {
-                const assignee = members.find(m => m.id === task.assignedMemberId);
-                return (
-                  <div key={task.id} className="flex items-center gap-2 p-2 rounded-md bg-secondary/30 hover:bg-secondary/50 group transition-colors">
-                    {/* Checkbox toggle */}
-                    <button onClick={() => handleToggleTask(task)} className="flex-shrink-0">
-                      {task.status === 'done'
-                        ? <div className="w-4 h-4 rounded bg-primary flex items-center justify-center"><svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
-                        : <div className="w-4 h-4 rounded border border-border bg-secondary/50" />}
-                    </button>
-                    {/* Description */}
-                    <span className={`flex-1 text-xs min-w-0 truncate ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{task.description}</span>
-                    {/* Assignee avatar */}
-                    {assignee && (
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${mkAvatarColor(assignee.id)}`}>{mkInitials(assignee.name)}</div>
-                        <span className="text-[10px] text-muted-foreground hidden sm:block">{assignee.name.split(' ')[0]}</span>
+          {/* Bonus distribution table */}
+          {hasDistribution ? (
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Bonus Distribution</div>
+              <div className="space-y-1.5">
+                {project.distribution.filter((d: ProjectDistribution) => d.totalScore > 0).map((d: ProjectDistribution) => {
+                  const member = members.find(m => m.id === d.memberId);
+                  return (
+                    <div key={d.memberId} className="flex items-center gap-2">
+                      <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold text-white ${mkAvatarColor(d.memberId)}`}>
+                        {mkInitials(member?.name || d.memberName)}
                       </div>
-                    )}
-                    {/* Status badge — click to cycle */}
-                    <button onClick={() => handleCycleStatus(task)}
-                      className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 transition-colors ${task.status === 'done' ? 'bg-primary/10 text-primary hover:bg-primary/20' : task.status === 'in-progress' ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'}`}>
-                      {task.status}
-                    </button>
-                    {/* Delete */}
-                    <button onClick={() => dispatch({ type: 'DELETE_PROJECT_TASK', payload: { projectId: project.id, taskId: task.id } })}
-                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive flex-shrink-0 transition-opacity">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground text-center py-4">No tasks yet — add one below.</div>
-          )}
-
-          {/* Add task row */}
-          <div className="flex gap-2 pt-1 border-t border-border">
-            <Input value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddTask()}
-              placeholder="Task description..." className="flex-1 h-8 text-xs bg-secondary border-input" />
-            <Select value={newTaskMemberId} onValueChange={setNewTaskMemberId}>
-              <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-input">
-                <SelectValue placeholder="Assign to…" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                {activeMembers.map(m => (
-                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${mkAvatarColor(m.id)}`}>{mkInitials(m.name)}</div>
-                      {m.name.split(' ')[0]}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" onClick={handleAddTask} className="h-8 px-3 text-xs bg-primary text-primary-foreground">
-              <Plus className="w-3 h-3 mr-1" />Add
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Scoring tab ── */}
-      {tab === 'scoring' && (
-        <div className="px-4 py-3 space-y-3">
-          <div className="space-y-2">
-            {scoringState.map((s) => {
-              const member = members.find(m => m.id === s.memberId);
-              if (!member) return null;
-              const memberDoneTasks = tasks.filter(t => t.status === 'done' && t.assignedMemberId === s.memberId);
-              const taskSummary = memberDoneTasks.length > 0
-                ? `${memberDoneTasks.length} done · ${memberDoneTasks.slice(0, 2).map(t => t.description.split(' ').slice(0, 2).join(' ')).join(', ')}`
-                : 'No completed tasks';
-              const autoD = calcAutoDeliverables(s.memberId);
-              return (
-                <div key={s.memberId} className="bg-secondary/20 rounded-lg p-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_90px_90px_90px]">
-                    {/* Col 1: member info + guiding questions */}
-                    <div className="flex gap-2.5">
-                      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white ${mkAvatarColor(member.id)}`}>{mkInitials(member.name)}</div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground">{member.name}</div>
-                        <div className="text-[10px] text-muted-foreground truncate">{taskSummary}</div>
-                        <div className="mt-1.5 space-y-0.5">
-                          {SCORING_QUESTIONS.map((pair, pi) => (
-                            pair.map((q, qi) => (
-                              <div key={`${pi}-${qi}`} className="text-[9px] text-muted-foreground/60 leading-tight">· {q}</div>
-                            ))
-                          ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between text-xs mb-0.5">
+                          <span className="font-medium truncate">{member?.name || d.memberName}</span>
+                          <span className="text-primary font-semibold ml-2 flex-shrink-0">{formatCurrency(d.finalBonus)}</span>
+                        </div>
+                        <div className="h-1 bg-secondary rounded-full overflow-hidden">
+                          <div className="h-full bg-primary rounded-full" style={{ width: `${d.sharePercent}%` }} />
                         </div>
                       </div>
+                      <span className="text-[10px] text-muted-foreground flex-shrink-0 w-10 text-right">{d.sharePercent.toFixed(1)}%</span>
                     </div>
-                    {/* Col 2: Deliverables /30 auto */}
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide font-medium">Deliverables</div>
-                      <Input type="number" min={0} max={30}
-                        value={s.deliverables}
-                        onChange={e => updateScore(s.memberId, 'deliverables', Math.min(30, Math.max(0, parseInt(e.target.value) || 0)))}
-                        className="h-8 w-full text-center text-sm font-semibold bg-secondary border-input text-primary" />
-                      <div className="text-[9px] text-primary/70">auto ({autoD}) / 30</div>
-                    </div>
-                    {/* Col 3: Responsibility /35 */}
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide font-medium">Responsibility</div>
-                      <Input type="number" min={0} max={35}
-                        value={s.responsibility}
-                        onChange={e => updateScore(s.memberId, 'responsibility', Math.min(35, Math.max(0, parseInt(e.target.value) || 0)))}
-                        className="h-8 w-full text-center text-sm font-semibold bg-secondary border-input" />
-                      <div className="text-[9px] text-muted-foreground">/ 35</div>
-                    </div>
-                    {/* Col 4: Quality /35 */}
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="text-[9px] text-muted-foreground uppercase tracking-wide font-medium">Quality</div>
-                      <Input type="number" min={0} max={35}
-                        value={s.quality}
-                        onChange={e => updateScore(s.memberId, 'quality', Math.min(35, Math.max(0, parseInt(e.target.value) || 0)))}
-                        className="h-8 w-full text-center text-sm font-semibold bg-secondary border-input" />
-                      <div className="text-[9px] text-muted-foreground">/ 35</div>
-                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground bg-secondary/30 rounded p-2.5 text-center">
+              Score this project in <strong className="text-foreground">Tasks &amp; Scoring</strong> to see bonus distribution.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Non-client: contribution bank summary ── */}
+      {!isClient && hasDistribution && (
+        <div className="border-t border-border bg-secondary/20 px-4 py-3">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Contribution Points</div>
+          <div className="flex flex-wrap gap-2">
+            {project.distribution.filter((d: ProjectDistribution) => d.totalScore > 0).map((d: ProjectDistribution) => {
+              const member = members.find(m => m.id === d.memberId);
+              return (
+                <div key={d.memberId} className="flex items-center gap-1.5 bg-secondary/40 rounded px-2 py-1">
+                  <div className={`w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-white ${mkAvatarColor(d.memberId)}`}>
+                    {mkInitials(member?.name || d.memberName)}
                   </div>
+                  <span className="text-xs font-medium">{member?.name?.split(' ')[0] || d.memberName}</span>
+                  <span className="text-[10px] text-primary font-semibold">{d.totalScore} pts</span>
                 </div>
               );
             })}
-          </div>
-
-          {/* Hint */}
-          <div className="text-[10px] text-muted-foreground bg-secondary/30 rounded-md p-2.5 leading-relaxed">
-            Deliverables are auto-calculated from completed tasks. Edit if a task carried more weight than others. Responsibility and Quality are your judgment — use the prompts above.
-          </div>
-
-          {/* Save scores */}
-          <div className="flex justify-end">
-            <Button size="sm" onClick={handleSaveScores} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              Save Scores
-            </Button>
           </div>
         </div>
       )}

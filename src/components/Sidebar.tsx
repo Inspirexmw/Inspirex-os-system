@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Calculator,
+  CheckSquare,
   ClipboardList,
   Target,
   BarChart3,
@@ -44,6 +45,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'billing', label: 'Billing', icon: Receipt, section: 'Studio Lab' },
+  { id: 'tasks', label: 'Tasks & Scoring', icon: CheckSquare, section: 'Finance' },
   { id: 'calculator', label: 'Project Calculator', icon: Calculator, section: 'Finance' },
   { id: 'summary', label: 'Monthly Summary', icon: BarChart3, section: 'Finance' },
   { id: 'capital', label: 'Working Capital', icon: Wallet, section: 'Finance' },
@@ -424,6 +426,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
     quote_approved: CheckCheck,
     quote_declined: X,
     recurring_due: Clock,
+    record_deleted: X,
   };
 
   const TYPE_COLOR: Record<string, string> = {
@@ -435,6 +438,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
     quote_approved: 'text-primary',
     quote_declined: 'text-destructive',
     recurring_due: 'text-amber-400',
+    record_deleted: 'text-muted-foreground',
   };
 
   const relativeTime = (iso: string) => {
@@ -449,7 +453,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
   };
 
   const actionRequired = notifications.filter(n => ['auto_transfer', 'bonus_ready', 'invoice_overdue', 'wc_low', 'recurring_due'].includes(n.type));
-  const recent = notifications.filter(n => ['transfer_completed', 'quote_approved', 'quote_declined'].includes(n.type));
+  const recent = notifications.filter(n => ['transfer_completed', 'quote_approved', 'quote_declined', 'record_deleted'].includes(n.type));
 
   return (
     <>

@@ -3,7 +3,7 @@
 
 export type EmploymentType = 'Founder' | 'Full-time' | 'Part-time' | 'Contract';
 export type WorkType = 'client' | 'internal' | 'impression';
-export type ViewType = 'dashboard' | 'calculator' | 'worklog' | 'commitment' | 'summary' | 'capital' | 'team' | 'settings' | 'billing';
+export type ViewType = 'dashboard' | 'calculator' | 'tasks' | 'worklog' | 'commitment' | 'summary' | 'capital' | 'team' | 'settings' | 'billing';
 export type WCCategory =
   // Inflows
   | 'client_payment'
@@ -167,6 +167,29 @@ export interface ProjectTask {
   completedAt?: string;
 }
 
+// === TASK PROJECTS (Tasks & Scoring section) ===
+export interface TaskProjectScore {
+  memberId: string;
+  deliverables: number;
+  responsibility: number;
+  quality: number;
+  totalPoints: number;
+  sharePercent: number;
+}
+
+export interface TaskProject {
+  id: string;
+  name: string;
+  type: WorkType;
+  billingInvoiceId?: string;
+  billingClientId?: string;
+  month: string;
+  tasks: ProjectTask[];
+  scores: TaskProjectScore[];
+  notes?: string;
+  createdAt: string;
+}
+
 // === WORK LOG ===
 export interface WorkLogEntry {
   id: string;
@@ -315,6 +338,7 @@ export interface AppNotification {
 export interface AppState {
   members: TeamMember[];
   projects: Project[];
+  taskProjects: TaskProject[];
   workLog: WorkLogEntry[];
   settings: SystemSettings;
   // Working Capital

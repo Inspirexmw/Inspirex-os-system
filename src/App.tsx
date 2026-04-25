@@ -11,6 +11,7 @@ import { Settings } from '@/sections/Settings';
 import { Billing } from '@/sections/Billing';
 import type { BillingView } from '@/sections/Billing';
 import { WorkingCapital } from '@/sections/WorkingCapital';
+import { TasksAndScoring } from '@/sections/TasksAndScoring';
 import { AppProvider, useApp } from '@/hooks/useAppState';
 import { Toaster } from '@/components/ui/sonner';
 import type { ViewType } from '@/types';
@@ -363,6 +364,8 @@ function AppContent() {
     switch (currentView) {
       case 'dashboard':
         return <Dashboard onViewChange={setCurrentView} />;
+      case 'tasks':
+        return <TasksAndScoring />;
       case 'calculator':
         return <ProjectCalculator />;
       case 'worklog':
