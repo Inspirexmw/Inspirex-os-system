@@ -156,6 +156,171 @@ export function MonthlySummary() {
     toast({ title: 'Exported', description: 'Monthly summary exported to CSV' });
   }, [monthlyData, selectedMonth, state.projects, toast, getMemberMonthlyEarnings]);
 
+  // Export Financial Report PDF — dark theme + logo
+  const exportPDF = useCallback(() => {
+    const projects = state.projects.filter(p => p.month === selectedMonth);
+    if (projects.length === 0) {
+      toast({ title: 'Error', description: 'No data for this month', variant: 'destructive' });
+      return;
+    }
+
+    const [yr, mo] = selectedMonth.split('-');
+    const mLabel = new Date(parseInt(yr), parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const filename = `inspirex-financial-report-${selectedMonth}.pdf`;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const sym = state.settings.currencySymbol;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
+    let y = 20;
+
+    // Dark background
+    doc.setFillColor('#0D0D0D');
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    const pdfRow = (left: string, right: string, highlight = false) => {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(highlight ? '#73F764' : '#CCCCCC');
+      doc.text(left, margin, y);
+      doc.text(right, pageWidth - margin, y, { align: 'right' });
+      y += 6;
+    };
+
+    const pdfDivider = (thick = false) => {
+      doc.setDrawColor(thick ? '#555555' : '#333333');
+      doc.setLineWidth(thick ? 0.5 : 0.2);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 4;
+    };
+
+    const pdfSection = (text: string) => {
+      y += 2;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor('#888888');
+      doc.text(text.toUpperCase(), margin, y);
+      y += 4;
+      pdfDivider();
+    };
+
+    // ── Logo ──
+    const billingLogo = state.billing.settings.logoBase64;
+    if (billingLogo) {
+      try {
+        const ext = billingLogo.includes('image/png') ? 'PNG' : 'JPEG';
+        const ti = document.createElement('img'); ti.src = billingLogo;
+        const nw = ti.naturalWidth || 400, nh = ti.naturalHeight || 120;
+        const lw = Math.min(Math.max(state.billing.settings.logoWidth || 50, 20), 80);
+        const lh = state.billing.settings.logoHeight && state.billing.settings.logoHeight > 0
+          ? state.billing.settings.logoHeight
+          : Math.min(Math.max(+(lw * nh / nw).toFixed(1), 7), 22);
+        doc.addImage(billingLogo, ext, margin, y - 2, lw, lh);
+        y += lh + 2;
+      } catch {
+        doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+        doc.setTextColor('#FFFFFF'); doc.text('Inspire', margin, y);
+        const iw = doc.getTextWidth('Inspire');
+        doc.setTextColor('#73F764'); doc.text('X', margin + iw, y);
+        y += 7;
+      }
+    } else {
+      doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+      doc.setTextColor('#FFFFFF'); doc.text('Inspire', margin, y);
+      const iw = doc.getTextWidth('Inspire');
+      doc.setTextColor('#73F764'); doc.text('X', margin + iw, y);
+      y += 7;
+    }
+
+    // Report label — top right
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor('#73F764');
+    doc.text('FINANCIAL REPORT', pageWidth - margin, margin + 5, { align: 'right' });
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#888888');
+    doc.text(mLabel, pageWidth - margin, margin + 11, { align: 'right' });
+
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#888888');
+    doc.text(`${state.settings.companyName} · Monthly Financial Report`, margin, y);
+    y += 3;
+    doc.setDrawColor('#73F764'); doc.setLineWidth(1);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    // ── Revenue ──
+    pdfSection('Revenue');
+    pdfRow('Total Gross Revenue (Client Projects)', `${sym} ${monthlyData.totalRevenue.toLocaleString()}`);
+    pdfRow('Total Direct Expenses', `−${sym} ${monthlyData.totalDirectExpenses.toLocaleString()}`);
+    y += 2;
+    pdfDivider(true);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor('#73F764');
+    doc.text('Total Project Net Profit', margin, y);
+    doc.text(`${sym} ${monthlyData.totalNetProfit.toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+    y += 10;
+
+    // ── Split ──
+    pdfSection('Revenue Split');
+    pdfRow(`Company Fund (${revenueSplit.companyPercent}%)`, `${sym} ${monthlyData.totalCompanyContributions.toLocaleString()}`);
+    pdfRow(`Bonus Pools (${revenueSplit.bonusPercent}%)`, `${sym} ${monthlyData.totalBonusPools.toLocaleString()}`, true);
+    y += 6;
+
+    // ── Team Payroll ──
+    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
+    pdfSection('Team Payroll');
+    pdfRow('Monthly Stipends Owed', `${sym} ${totalStipends.toLocaleString()}`);
+    pdfRow('Total Bonus Pool Distributed', `${sym} ${monthlyData.totalBonusPools.toLocaleString()}`, true);
+    y += 2;
+    pdfDivider(true);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor('#FFFFFF');
+    doc.text('Projected Total Payroll', margin, y);
+    doc.text(`${sym} ${(totalStipends + monthlyData.totalBonusPools).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+    y += 10;
+
+    // ── Per Member Breakdown ──
+    pdfSection('Per Member Breakdown');
+    const c1 = margin + 3;
+    const c2 = margin + contentWidth * 0.32;
+    const c3 = margin + contentWidth * 0.50;
+    const c4 = margin + contentWidth * 0.68;
+    const c5 = pageWidth - margin;
+    doc.setFillColor('#1a1a1a');
+    doc.rect(margin, y - 1, contentWidth, 7, 'F');
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor('#888888');
+    doc.text('Member', c1, y + 4);
+    doc.text('Stipend', c2, y + 4);
+    doc.text('Bonus', c3, y + 4);
+    doc.text('Contrib. Pts', c4, y + 4);
+    doc.text('Total', c5, y + 4, { align: 'right' });
+    y += 8;
+
+    memberBreakdownData.forEach((m, i) => {
+      const me = getMemberMonthlyEarnings(m.memberId, selectedMonth);
+      if (i % 2 === 0) {
+        doc.setFillColor('#111111');
+        doc.rect(margin, y - 1, contentWidth, 7, 'F');
+      }
+      doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#CCCCCC');
+      doc.text(m.memberName, c1, y + 4);
+      doc.text(`${sym} ${Math.round(m.stipendPaid).toLocaleString()}`, c2, y + 4);
+      doc.setTextColor(me.bonus > 0 ? '#73F764' : '#CCCCCC');
+      doc.text(`${sym} ${Math.round(me.bonus).toLocaleString()}`, c3, y + 4);
+      doc.setTextColor('#888888');
+      doc.text(m.isContract ? '—' : `${m.bankPoints} pts`, c4, y + 4);
+      doc.setTextColor('#FFFFFF'); doc.setFont('helvetica', 'bold');
+      doc.text(`${sym} ${Math.round(m.stipendPaid + me.bonus).toLocaleString()}`, c5, y + 4, { align: 'right' });
+      y += 7;
+    });
+    y += 6;
+
+    // ── Footer ──
+    pdfDivider();
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#888888');
+    doc.text(`Generated by InspireX OS · ${state.settings.companyName}`, margin, y);
+    doc.text(new Date().toLocaleDateString('en-GB'), pageWidth - margin, y, { align: 'right' });
+
+    doc.save(filename);
+    toast({ title: '✓ Report downloaded', description: `${filename} saved to your Downloads folder` });
+  }, [monthlyData, selectedMonth, state.projects, state.settings, state.billing.settings, activeMembers, getMemberMonthlyEarnings, revenueSplit, memberBreakdownData, toast]);
+
   // Get month name
   const monthName = useMemo(() => {
     const [year, month] = selectedMonth.split('-');
@@ -165,7 +330,7 @@ export function MonthlySummary() {
     });
   }, [selectedMonth]);
 
-  // Generate PDF receipt for a member
+  // Generate PDF receipt for a member — dark theme + logo
   const generateReceipt = useCallback((memberId: string, memberName: string) => {
     const monthBreakdown = memberBreakdownData.find(m => m.memberId === memberId);
     const earnings = getMemberMonthlyEarnings(memberId, selectedMonth);
@@ -186,30 +351,31 @@ export function MonthlySummary() {
     );
     const bankReward = bankTier ? Math.round(member.stipend * bankTier.rewardPercent / 100) : 0;
 
-
-
-    // Generate PDF directly using jsPDF — no popup, no print dialog
     const filename = `${memberName.replace(/\s+/g, '-')}-Receipt-${selectedMonth}.pdf`;
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     const sym = state.settings.currencySymbol;
     const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
     const contentWidth = pageWidth - margin * 2;
     let y = 20;
 
+    // ── Dark background ──
+    doc.setFillColor('#0D0D0D');
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
     const row = (left: string, right: string, highlight = false, indent = false) => {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(highlight ? '#16a34a' : '#333333');
+      doc.setTextColor(highlight ? '#73F764' : '#CCCCCC');
       doc.text(indent ? '  ' + left : left, margin, y);
       doc.text(right, pageWidth - margin, y, { align: 'right' });
       y += 6;
     };
 
     const divider = (thick = false) => {
-      doc.setDrawColor(thick ? '#111111' : '#eeeeee');
+      doc.setDrawColor(thick ? '#555555' : '#333333');
       doc.setLineWidth(thick ? 0.5 : 0.2);
       doc.line(margin, y, pageWidth - margin, y);
       y += 4;
@@ -219,24 +385,42 @@ export function MonthlySummary() {
       y += 2;
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor('#999999');
+      doc.setTextColor('#888888');
       doc.text(text.toUpperCase(), margin, y);
       y += 4;
       divider();
     };
 
-    // ── Header ──
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor('#111111');
-    doc.text('Inspire', margin, y);
-    const inspireWidth = doc.getTextWidth('Inspire');
-    doc.setTextColor('#73F764');
-    doc.text('X', margin + inspireWidth, y);
-    y += 7;
+    // ── Logo / Header ──
+    const billingLogo = state.billing.settings.logoBase64;
+    if (billingLogo) {
+      try {
+        const ext = billingLogo.includes('image/png') ? 'PNG' : 'JPEG';
+        const ti = document.createElement('img'); ti.src = billingLogo;
+        const nw = ti.naturalWidth || 400, nh = ti.naturalHeight || 120;
+        const lw = Math.min(Math.max(state.billing.settings.logoWidth || 50, 20), 80);
+        const lh = state.billing.settings.logoHeight && state.billing.settings.logoHeight > 0
+          ? state.billing.settings.logoHeight
+          : Math.min(Math.max(+(lw * nh / nw).toFixed(1), 7), 22);
+        doc.addImage(billingLogo, ext, margin, y - 2, lw, lh);
+        y += lh + 2;
+      } catch {
+        doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+        doc.setTextColor('#FFFFFF'); doc.text('Inspire', margin, y);
+        const iw = doc.getTextWidth('Inspire');
+        doc.setTextColor('#73F764'); doc.text('X', margin + iw, y);
+        y += 7;
+      }
+    } else {
+      doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+      doc.setTextColor('#FFFFFF'); doc.text('Inspire', margin, y);
+      const iw = doc.getTextWidth('Inspire');
+      doc.setTextColor('#73F764'); doc.text('X', margin + iw, y);
+      y += 7;
+    }
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor('#666666');
+    doc.setTextColor('#888888');
     doc.text(`${state.settings.companyName} · Monthly Earnings Receipt`, margin, y);
     y += 3;
     doc.setDrawColor('#73F764');
@@ -246,25 +430,25 @@ export function MonthlySummary() {
 
     // ── Meta ──
     doc.setFontSize(9);
-    doc.setTextColor('#999999');
+    doc.setTextColor('#888888');
     const col2 = margin + contentWidth / 2;
     doc.text('TEAM MEMBER', margin, y);
     doc.text('ROLE', col2, y);
     y += 4;
     doc.setFontSize(11);
-    doc.setTextColor('#111111');
+    doc.setTextColor('#FFFFFF');
     doc.setFont('helvetica', 'bold');
     doc.text(memberName, margin, y);
     doc.setFont('helvetica', 'normal');
     doc.text(member.role, col2, y);
     y += 7;
     doc.setFontSize(9);
-    doc.setTextColor('#999999');
+    doc.setTextColor('#888888');
     doc.text('MONTH', margin, y);
     doc.text('EMPLOYMENT TYPE', col2, y);
     y += 4;
     doc.setFontSize(11);
-    doc.setTextColor('#111111');
+    doc.setTextColor('#FFFFFF');
     doc.text(monthLabel, margin, y);
     doc.text(member.type, col2, y);
     y += 10;
@@ -284,7 +468,7 @@ export function MonthlySummary() {
     divider(true);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor('#16a34a');
+    doc.setTextColor('#73F764');
     doc.text('Total Received This Month', margin, y);
     doc.text(`${sym} ${Math.round(monthBreakdown.stipendPaid + earnings.bonus).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
     y += 10;
@@ -302,13 +486,13 @@ export function MonthlySummary() {
     divider();
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor('#999999');
+    doc.setTextColor('#888888');
     doc.text(`Generated by InspireX OS · ${state.settings.companyName}`, margin, y);
     doc.text(new Date().toLocaleDateString('en-GB'), pageWidth - margin, y, { align: 'right' });
 
     doc.save(filename);
     toast({ title: '✓ Receipt downloaded', description: `${filename} saved to your Downloads folder` });
-  }, [monthlyData, selectedMonth, getMemberMonthlyEarnings, activeMembers, state.projects, state.settings, state.currentQuarter, toast]);
+  }, [monthlyData, selectedMonth, getMemberMonthlyEarnings, activeMembers, state.projects, state.settings, state.billing.settings, state.currentQuarter, toast]);
 
   // Send receipt email only
   const sendReceiptEmail = useCallback((memberId: string, memberName: string) => {
@@ -351,6 +535,10 @@ export function MonthlySummary() {
           <Button variant="outline" size="sm" onClick={exportCSV}>
             <Download className="w-4 h-4 mr-2" />
             Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportPDF}>
+            <FileText className="w-4 h-4 mr-2" />
+            Export PDF
           </Button>
         </div>
       </div>
