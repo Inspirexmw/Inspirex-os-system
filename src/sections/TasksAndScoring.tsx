@@ -5,6 +5,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -322,28 +323,34 @@ function ProjectCard({
           </div>
 
           {/* Add task row */}
-          <div className="flex gap-2 pt-1 border-t border-border">
-            <Input value={newDesc} onChange={e => setNewDesc(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addTask()}
-              placeholder="Task description…" className="flex-1 h-8 text-xs bg-secondary border-input" />
-            <Select value={newMemberId} onValueChange={setNewMemberId}>
-              <SelectTrigger className="w-32 h-8 text-xs bg-secondary border-input">
-                <SelectValue placeholder="Assign…" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                {activeMembers.map(m => (
-                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${mkAvatarColor(m.id)}`}>{mkInitials(m.name)}</div>
-                      {m.name.split(' ')[0]}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" onClick={addTask} className="h-8 px-3 text-xs">
-              <Plus className="w-3 h-3 mr-1" />Add
-            </Button>
+          <div className="pt-1 border-t border-border space-y-2">
+            <Textarea
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="Describe the task in detail — what needs to be done, any relevant context…"
+              className="text-xs bg-secondary border-input resize-none min-h-[72px]"
+              rows={3}
+            />
+            <div className="flex gap-2">
+              <Select value={newMemberId} onValueChange={setNewMemberId}>
+                <SelectTrigger className="flex-1 h-8 text-xs bg-secondary border-input">
+                  <SelectValue placeholder="Assign to member…" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {activeMembers.map(m => (
+                    <SelectItem key={m.id} value={m.id} className="text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${mkAvatarColor(m.id)}`}>{mkInitials(m.name)}</div>
+                        {m.name.split(' ')[0]}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={addTask} className="h-8 px-3 text-xs bg-primary text-primary-foreground flex-shrink-0">
+                <Plus className="w-3 h-3 mr-1" />Add Task
+              </Button>
+            </div>
           </div>
         </div>
       )}

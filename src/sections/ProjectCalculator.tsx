@@ -1,34 +1,15 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Save, Download, Trash2, History, Copy, AlertTriangle, Info } from 'lucide-react';
+import { Save, Download, Trash2, History, Copy, AlertTriangle } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useApp } from '@/hooks/useAppState';
 import { useToast } from '@/hooks/use-toast';
-import type { ProjectDistribution, WorkType, Project, TeamMember } from '@/types';
-
-const TYPE_CONFIG: Record<WorkType, { badge: string; desc: string; color: string }> = {
-  client: {
-    badge: 'Revenue-generating',
-    desc: 'Generates revenue. Triggers 60/40 split. Bonus pool distributed to team based on involvement scores (set in Tasks & Scoring).',
-    color: 'border-primary/30 bg-primary/5',
-  },
-  internal: {
-    badge: 'Non-revenue',
-    desc: 'No revenue. Builds InspireX systems and capacity. Scores feed the Contribution Bank (set in Tasks & Scoring).',
-    color: 'border-blue-500/30 bg-blue-500/5',
-  },
-  impression: {
-    badge: 'Non-revenue',
-    desc: 'No revenue. Portfolio and visibility work. Same quality standard as paid work. Scores feed the Contribution Bank (set in Tasks & Scoring).',
-    color: 'border-amber-500/30 bg-amber-500/5',
-  },
-};
+import type { ProjectDistribution, Project, TeamMember } from '@/types';
 
 export function ProjectCalculator() {
   const { state, dispatch, formatCurrency, getActiveMembers } = useApp();
@@ -38,12 +19,10 @@ export function ProjectCalculator() {
   const { revenueSplit } = state.settings;
 
   const [projectName, setProjectName] = useState('');
-  const [projectType, setProjectType] = useState<WorkType>('client');
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [linkedInvoiceId, setLinkedInvoiceId] = useState('');
   const [revenue, setRevenue] = useState('');
   const [directExpenses, setDirectExpenses] = useState('');
-  const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [showHistory, setShowHistory] = useState(true);
 
@@ -69,24 +48,14 @@ export function ProjectCalculator() {
     setDirectExpenses(totalCosts > 0 ? String(totalCosts) : '');
   };
 
-  const isClient = projectType === 'client';
-
   const calculations = useMemo(() => {
-    if (!isClient) return { rev: 0, exp: 0, grossProfit: 0, bonusPool: 0, companyContribution: 0 };
     const rev = parseFloat(revenue) || 0;
     const exp = parseFloat(directExpenses) || 0;
     const grossProfit = Math.max(0, rev - exp);
     const bonusPool = grossProfit * ((revenueSplit.bonusPercent ?? 40) / 100);
     const companyContribution = grossProfit * ((revenueSplit.companyPercent ?? 60) / 100);
     return { rev, exp, grossProfit, bonusPool, companyContribution };
-  }, [revenue, directExpenses, revenueSplit, isClient]);
-
-  const handleTypeChange = useCallback((type: WorkType) => {
-    setProjectType(type);
-    setRevenue('');
-    setDirectExpenses('');
-    setDescription('');
-  }, []);
+  }, [revenue, directExpenses, revenueSplit]);
 
   const saveProject = useCallback(() => {
     const resolvedName = projectName.trim() || (() => {
@@ -97,7 +66,7 @@ export function ProjectCalculator() {
       toast({ title: 'Error', description: 'Enter a project name or link to an invoice', variant: 'destructive' });
       return;
     }
-    if (isClient && calculations.rev === 0) {
+    if (calculations.rev === 0) {
       toast({ title: 'Error', description: 'Please enter revenue for this client project', variant: 'destructive' });
       return;
     }
@@ -108,7 +77,7 @@ export function ProjectCalculator() {
     const newProject: Project = {
       id: Date.now().toString(),
       name: resolvedName,
-      type: projectType,
+      type: 'client',
       month,
       revenue: calculations.rev,
       directExpenses: calculations.exp,
@@ -143,14 +112,14 @@ export function ProjectCalculator() {
 
     // Reset form
     setProjectName(''); setRevenue(''); setDirectExpenses('');
-    setDescription(''); setNotes('');
+    setNotes('');
     setLinkedInvoiceId('');
 
     toast({
       title: '✓ Project saved',
       description: `"${newProject.name}" saved. Go to Tasks & Scoring to assign team scores.`,
     });
-  }, [projectName, projectType, isClient, month, calculations, notes, dispatch, toast, linkedInvoiceId, billingInvoices, billingClients, state.settings.revenueSplit]);
+  }, [projectName, month, calculations, notes, dispatch, toast, linkedInvoiceId, billingInvoices, billingClients, state.settings.revenueSplit]);
 
   const deleteProject = useCallback((id: string) => {
     if (confirm('Delete this project?')) {
@@ -161,7 +130,6 @@ export function ProjectCalculator() {
 
   const duplicateProject = useCallback((project: Project) => {
     setProjectName(`${project.name} (Copy)`);
-    setProjectType(project.type);
     setMonth(project.month);
     setRevenue(project.revenue.toString());
     setDirectExpenses(project.directExpenses.toString());
@@ -186,8 +154,6 @@ export function ProjectCalculator() {
     toast({ title: 'Exported' });
   }, [state.projects, activeMembers, month, toast]);
 
-  const cfg = TYPE_CONFIG[projectType];
-
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Header */}
@@ -195,7 +161,7 @@ export function ProjectCalculator() {
         <div>
           <h1 className="text-2xl font-semibold">Project Calculator</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Financial records only. Team scoring is handled in <strong>Tasks &amp; Scoring</strong>.
+            Client project financials. Team scoring is handled in <strong>Tasks &amp; Scoring</strong>.
           </p>
         </div>
         <div className="flex gap-2 no-print">
@@ -208,40 +174,10 @@ export function ProjectCalculator() {
         </div>
       </div>
 
-      {/* STEP 1 — Project Type */}
+      {/* STEP 1 — Invoice + Project Details */}
       <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 1 — Project Type</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="w-72">
-              <Select value={projectType} onValueChange={(v) => handleTypeChange(v as WorkType)}>
-                <SelectTrigger className="bg-secondary border-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="client">💼  Client Project</SelectItem>
-                  <SelectItem value="internal">⚙️  Internal Project</SelectItem>
-                  <SelectItem value="impression">✨  Impression / Visibility</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Badge variant={isClient ? 'default' : 'secondary'} className="text-xs">{cfg.badge}</Badge>
-          </div>
-          <div className={`flex items-start gap-2 p-3 rounded-lg border text-sm text-muted-foreground ${cfg.color}`}>
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0 opacity-60" />
-            <span>{cfg.desc}</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* STEP 2 — Invoice + Project Details (client) */}
-      {isClient && (
-        <>
-          <Card className="bg-card border-border">
             <CardHeader className="pb-3">
-              <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 2 — Invoice &amp; Project Details</CardTitle>
+              <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 1 — Invoice &amp; Project Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
 
@@ -367,40 +303,6 @@ export function ProjectCalculator() {
               </CardContent>
             </Card>
           </div>
-        </>
-      )}
-
-      {/* STEP 2 — Description (non-revenue projects) */}
-      {!isClient && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 2 — Project Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Project Name</Label>
-                <Input placeholder="e.g. InspireX brand guidelines refresh"
-                  value={projectName} onChange={e => setProjectName(e.target.value)} className="bg-secondary border-input" />
-              </div>
-              <div className="space-y-2">
-                <Label>Month</Label>
-                <Input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-secondary border-input" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Brief description</Label>
-              <Input placeholder="e.g. System documentation, internal tool build..."
-                value={description} onChange={e => setDescription(e.target.value)} className="bg-secondary border-input" />
-            </div>
-            <div className="space-y-2">
-              <Label>Notes (optional)</Label>
-              <Input placeholder="Any additional context..."
-                value={notes} onChange={e => setNotes(e.target.value)} className="bg-secondary border-input" />
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Save */}
       <div className="flex justify-between items-center no-print flex-wrap gap-3">
