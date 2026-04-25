@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
-  Plus, Trash2, CheckSquare, ChevronRight, ChevronDown, Save, X,
+  Plus, Trash2, CheckSquare, ChevronRight, ChevronDown, Save, X, Pencil, Check,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -141,17 +141,91 @@ function NewProjectForm({ onSave, onCancel, billingInvoices, billingClients }: N
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, members, onToggle, onCycle, onDelete }: {
+function TaskRow({ task, members, onToggle, onCycle, onDelete, onEdit }: {
   task: ProjectTask;
   members: any[];
   onToggle: () => void;
   onCycle: () => void;
   onDelete: () => void;
+  onEdit: (description: string, memberId: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editDesc, setEditDesc] = useState(task.description);
+  const [editMemberId, setEditMemberId] = useState(task.assignedMemberId || '');
+  const activeMembers = members.filter(m => m.isActive);
   const assignee = members.find(m => m.id === task.assignedMemberId);
+
+  const startEdit = () => {
+    setEditDesc(task.description);
+    setEditMemberId(task.assignedMemberId || '');
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    if (!editDesc.trim()) return;
+    onEdit(editDesc.trim(), editMemberId);
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setEditDesc(task.description);
+    setEditMemberId(task.assignedMemberId || '');
+    setEditing(false);
+  };
+
+  // ── Edit mode ──
+  if (editing) {
+    return (
+      <div className="rounded-md bg-secondary/40 border border-primary/30 p-2 space-y-2">
+        <Textarea
+          value={editDesc}
+          onChange={e => setEditDesc(e.target.value)}
+          className="text-xs bg-secondary border-input resize-none min-h-[64px]"
+          rows={3}
+          autoFocus
+          onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
+        />
+        <div className="flex gap-2">
+          <Select value={editMemberId} onValueChange={setEditMemberId}>
+            <SelectTrigger className="flex-1 h-8 text-xs bg-secondary border-input">
+              <SelectValue placeholder="Assign to member…" />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border">
+              {activeMembers.map(m => (
+                <SelectItem key={m.id} value={m.id} className="text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${mkAvatarColor(m.id)}`}>
+                      {mkInitials(m.name)}
+                    </div>
+                    {m.name.split(' ')[0]}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <button
+            onClick={cancelEdit}
+            className="h-8 px-2 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors flex-shrink-0"
+            title="Cancel">
+            <X className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={saveEdit}
+            disabled={!editDesc.trim()}
+            className="h-8 px-3 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex-shrink-0 flex items-center gap-1"
+            title="Save changes">
+            <Check className="w-3.5 h-3.5" />Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── View mode ──
   return (
-    <div className="flex items-center gap-2 p-2 rounded-md bg-secondary/30 hover:bg-secondary/50 group transition-colors">
-      <button onClick={onToggle} className="flex-shrink-0">
+    <div className="flex items-start gap-2 p-2 rounded-md bg-secondary/30 hover:bg-secondary/50 group transition-colors">
+      {/* Checkbox */}
+      <button onClick={onToggle} className="flex-shrink-0 mt-0.5">
         {task.status === 'done'
           ? <div className="w-4 h-4 rounded bg-primary flex items-center justify-center">
               <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -160,28 +234,40 @@ function TaskRow({ task, members, onToggle, onCycle, onDelete }: {
             </div>
           : <div className="w-4 h-4 rounded border border-border bg-secondary/50" />}
       </button>
-      <span className={`flex-1 text-xs min-w-0 truncate ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+
+      {/* Description — wraps naturally */}
+      <span className={`flex-1 text-xs min-w-0 break-words leading-relaxed ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
         {task.description}
       </span>
-      {assignee && (
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${mkAvatarColor(assignee.id)}`}>
-            {mkInitials(assignee.name)}
+
+      {/* Right-side controls */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {assignee && (
+          <div className="flex items-center gap-1">
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${mkAvatarColor(assignee.id)}`}>
+              {mkInitials(assignee.name)}
+            </div>
+            <span className="text-[10px] text-muted-foreground hidden sm:block">{assignee.name.split(' ')[0]}</span>
           </div>
-          <span className="text-[10px] text-muted-foreground hidden sm:block">{assignee.name.split(' ')[0]}</span>
-        </div>
-      )}
-      <button onClick={onCycle}
-        className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 transition-colors
-          ${task.status === 'done' ? 'bg-primary/10 text-primary hover:bg-primary/20'
-          : task.status === 'in-progress' ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
-          : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'}`}>
-        {task.status}
-      </button>
-      <button onClick={onDelete}
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive flex-shrink-0 transition-opacity">
-        <Trash2 className="w-3 h-3" />
-      </button>
+        )}
+        <button onClick={onCycle}
+          className={`text-[9px] px-1.5 py-0.5 rounded font-medium transition-colors
+            ${task.status === 'done' ? 'bg-primary/10 text-primary hover:bg-primary/20'
+            : task.status === 'in-progress' ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+            : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'}`}>
+          {task.status}
+        </button>
+        <button onClick={startEdit}
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary flex-shrink-0 transition-opacity p-0.5"
+          title="Edit task">
+          <Pencil className="w-3 h-3" />
+        </button>
+        <button onClick={onDelete}
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive flex-shrink-0 transition-opacity p-0.5"
+          title="Delete task">
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -318,6 +404,12 @@ function ProjectCard({
                 onToggle={() => toggleTask(task)}
                 onCycle={() => cycleStatus(task)}
                 onDelete={() => deleteTask(task.id)}
+                onEdit={(description, memberId) =>
+                  dispatch({ type: 'UPDATE_PROJECT_TASK', payload: {
+                    taskProjectId: project.id, taskId: task.id,
+                    updates: { description, assignedMemberId: memberId },
+                  }})
+                }
               />
             ))}
           </div>
