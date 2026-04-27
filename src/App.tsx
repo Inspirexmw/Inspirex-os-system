@@ -86,6 +86,7 @@ function downloadApprovalPDF(doc: any, clientName: string, settings: any, sym: s
   y += 2;
 
   // Line items table header
+  const tableStartY = y;
   pdf.setFillColor('#111111');
   pdf.rect(M, y, CW, 7, 'F');
   pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#888888');
@@ -109,6 +110,9 @@ function downloadApprovalPDF(doc: any, clientName: string, settings: any, sym: s
     pdf.text(sym + ' ' + (item.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), W - M - 2, y + 5, { align: 'right' });
     y += ROW_H;
   });
+  // Outer rounded border around table
+  pdf.setDrawColor('#2a2a2a'); pdf.setLineWidth(0.3);
+  pdf.roundedRect(M, tableStartY, CW, y - tableStartY, 1.5, 1.5, 'S');
 
   // Total row
   y += 2;
@@ -165,7 +169,6 @@ function ApprovalPage({ token }: { token: string }) {
       projectName: payload.pn || '', docStatus: payload.ds,
       companyName: payload.cn, companyEmail: payload.ce,
       website: payload.w || '', tagline: payload.tg || '', clientName: payload.cl,
-      logoBase64: payload.lg || undefined,
     };
   }
 
@@ -175,7 +178,7 @@ function ApprovalPage({ token }: { token: string }) {
     : undefined;
 
   const settings = payload
-    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: payload.logoBase64 || state.billing.settings.logoBase64 || undefined }
+    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: state.billing.settings.logoBase64 || undefined }
     : state.billing.settings;
 
   const doc: any = payload
