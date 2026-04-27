@@ -424,9 +424,11 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
     const map: Record<string, { invoiceCount: number; receivables: number; paid: number; balance: number }> = {};
     clients.forEach((c: BillingClient) => {
       const clientInvoices = documents.filter((d: BillingDocument) => d.type === 'invoice' && d.clientId === c.id);
-      const receivables = clientInvoices.reduce((s: number, inv: BillingDocument) => s + inv.total * (inv.exchangeRate || 1), 0);
+      // Show in client's own currency — no MWK conversion in this view
+      const receivables = clientInvoices.reduce((s: number, inv: BillingDocument) => s + inv.total, 0);
       const paid = clientInvoices.reduce((s: number, inv: BillingDocument) =>
-        s + inv.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
+        s + inv.payments.reduce((ps: number, p: BillingPayment) =>
+          ps + (p.currency === c.currency ? p.amount : p.mwkEquivalent / (inv.exchangeRate || 1)), 0), 0);
       map[c.id] = {
         invoiceCount: clientInvoices.length,
         receivables,
@@ -510,17 +512,17 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
                       <td className="px-4 py-3 text-muted-foreground text-xs">{c.email || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">{c.phone || '—'}</td>
                       <td className="px-4 py-3"><span className="text-xs text-primary font-medium">{c.currency}</span></td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
                         {stats.receivables > 0
                           ? <span className="text-xs font-medium">{fmtAmt(stats.receivables, c.currency)}</span>
                           : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
                         {stats.paid > 0
                           ? <span className="text-xs font-medium text-emerald-400">{fmtAmt(stats.paid, c.currency)}</span>
                           : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
                         {stats.receivables > 0
                           ? <span className={`text-xs font-semibold ${balanceColor}`}>{stats.balance === 0 ? '✓ Settled' : fmtAmt(stats.balance, c.currency)}</span>
                           : <span className="text-xs text-muted-foreground">—</span>}
@@ -3314,7 +3316,7 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
     const [y, m] = ym.split('-');
     const mInvoices = periodInvoices.filter((i: BillingDocument) => i.issueDate.startsWith(ym));
     const mExpenses = periodExpenses.filter((e: any) => e.date.startsWith(ym));
-    const revenue   = mInvoices.reduce((s: number, i: BillingDocument) => s + i.subtotal, 0);
+    const revenue   = mInvoices.reduce((s: number, i: BillingDocument) => s + i.subtotal * (i.exchangeRate || 1), 0);
     const received  = mInvoices.reduce((s: number, i: BillingDocument) => s + i.payments.reduce((ps: number, p: BillingPayment) => ps + p.mwkEquivalent, 0), 0);
     const expTotal  = mExpenses.reduce((s: number, e: any) => s + e.amount, 0);
     const profit    = received - expTotal;
