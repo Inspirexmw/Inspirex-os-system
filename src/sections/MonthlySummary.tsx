@@ -276,13 +276,14 @@ export function MonthlySummary() {
 
     // ── Per Member Breakdown ──
     pdfSection('Per Member Breakdown');
-    // Column layout: Member name (~35mm) + Stipend + Bonus + Contrib.Pts + Total
-    // Each numeric col needs ~30mm for "MK 276,591"; Total needs more for larger sums
-    const c1  = margin + 3;         // Member, left-aligned
-    const c2R = margin + 65;        // Stipend right edge  (= 85mm)
-    const c3R = margin + 105;       // Bonus right edge    (= 125mm)
-    const c4  = margin + 110;       // Contrib. Pts left   (= 130mm)
-    const c5  = pageWidth - margin - 4; // Total right edge with 4mm inner padding
+    // 5-col layout across 170mm content:
+    // Member(left) | Stipend(R=85) | Bonus(R=115) | Contrib.Pts(R=150) | Total(R=186)
+    // Bonus→Contrib gap: 35mm — safe even when point values grow to 4 digits
+    const c1  = margin + 3;              // Member, left-aligned
+    const c2R = margin + 65;             // Stipend right edge   (= 85mm)
+    const c3R = margin + 95;             // Bonus right edge     (= 115mm)
+    const c4R = margin + 130;            // Contrib. Pts right edge (= 150mm) — right-aligned
+    const c5  = pageWidth - margin - 4;  // Total right edge     (= 186mm)
     const memberTableStartY = y - 1;
     doc.setFillColor('#1a1a1a');
     doc.roundedRect(margin, y - 1, contentWidth, 7, 1.5, 1.5, 'F');
@@ -290,7 +291,7 @@ export function MonthlySummary() {
     doc.text('Member', c1, y + 4);
     doc.text('Stipend', c2R, y + 4, { align: 'right' });
     doc.text('Bonus', c3R, y + 4, { align: 'right' });
-    doc.text('Contrib. Pts', c4, y + 4);
+    doc.text('Contrib. Pts', c4R, y + 4, { align: 'right' });
     doc.text('Total', c5, y + 4, { align: 'right' });
     y += 8;
 
@@ -306,7 +307,7 @@ export function MonthlySummary() {
       doc.setTextColor(me.bonus > 0 ? '#73F764' : '#CCCCCC');
       doc.text(`${sym} ${Math.round(me.bonus).toLocaleString()}`, c3R, y + 4, { align: 'right' });
       doc.setTextColor('#888888');
-      doc.text(m.isContract ? '—' : `${m.bankPoints} pts`, c4, y + 4);
+      doc.text(m.isContract ? '—' : `${m.bankPoints} pts`, c4R, y + 4, { align: 'right' });
       doc.setTextColor('#FFFFFF'); doc.setFont('helvetica', 'bold');
       doc.text(`${sym} ${Math.round(m.stipendPaid + me.bonus).toLocaleString()}`, c5, y + 4, { align: 'right' });
       y += 7;
