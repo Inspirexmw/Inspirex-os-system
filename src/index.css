@@ -4,37 +4,37 @@
 
 @layer base {
   :root {
-    --background: 0 0% 5.5%;
-    --foreground: 40 14% 93%;
-    --card: 0 0% 8.6%;
-    --card-foreground: 40 14% 93%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 40 14% 93%;
-    --primary: 114 90% 68%;
-    --primary-foreground: 0 0% 5.5%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 40 14% 93%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 30 5% 58%;
-    --accent: 114 90% 68%;
-    --accent-foreground: 0 0% 5.5%;
+    --background: 0 0% 4.5%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 7.5%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 114 85% 64%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 11%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 9%;
+    --muted-foreground: 0 0% 46%;
+    --accent: 114 85% 64%;
+    --accent-foreground: 0 0% 4%;
     --destructive: 0 65% 58%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 100% / 0.08;
-    --input: 0 0% 100% / 0.14;
-    --ring: 114 90% 68%;
-    --radius: 0.625rem;
-    
-    --sidebar-background: 0 0% 8.6%;
-    --sidebar-foreground: 40 14% 93%;
-    --sidebar-primary: 114 90% 68%;
-    --sidebar-primary-foreground: 0 0% 5.5%;
-    --sidebar-accent: 114 90% 68% / 0.08;
-    --sidebar-accent-foreground: 40 14% 93%;
-    --sidebar-border: 0 0% 100% / 0.08;
-    --sidebar-ring: 114 90% 68%;
-    
-    --chart-1: 114 90% 68%;
+    --border: 0 0% 100% / 0.07;
+    --input: 0 0% 100% / 0.10;
+    --ring: 114 85% 64%;
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 93%;
+    --sidebar-primary: 114 85% 64%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 114 85% 64% / 0.08;
+    --sidebar-accent-foreground: 0 0% 93%;
+    --sidebar-border: 0 0% 100% / 0.06;
+    --sidebar-ring: 114 85% 64%;
+
+    --chart-1: 114 85% 64%;
     --chart-2: 207 65% 58%;
     --chart-3: 42 70% 52%;
     --chart-4: 0 65% 58%;
@@ -139,14 +139,30 @@ input:focus, select:focus, textarea:focus {
 
 /* Glass effect */
 .glass {
-  background: rgba(22, 22, 22, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(11, 11, 11, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Stat card hover glow */
+.stat-glow {
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.2), 0 4px 24px -4px hsl(var(--primary) / 0.08);
+}
+
+/* Accent top-line for highlighted cards */
+.accent-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.5), transparent);
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 
 /* Gradient text */
 .gradient-text {
-  background: linear-gradient(135deg, #73F764 0%, #4a9edd 100%);
+  background: linear-gradient(135deg, #6ef25d 0%, #4a9edd 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

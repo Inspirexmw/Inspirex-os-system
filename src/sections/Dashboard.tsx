@@ -25,6 +25,16 @@ import {
   Cell
 } from 'recharts';
 import type { TrendData } from '@/types';
+import { motion } from 'framer-motion';
+
+const fadeUpItem = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.25, 0.1, 0.25, 1] as const } },
+};
+const staggerGrid = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
 
 export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/types').ViewType) => void }) {
   const { state, dispatch, formatCurrency, getActiveMembers, getCommitmentData } = useApp();
@@ -219,18 +229,18 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     return activeMembers.reduce((sum, m) => sum + m.contributionBank.currentQuarterPoints, 0);
   }, [activeMembers]);
 
-  const StatCard = ({ 
-    title, 
-    value, 
-    subtitle, 
-    icon: Icon, 
+  const StatCard = ({
+    title,
+    value,
+    subtitle,
+    icon: Icon,
     trend,
     trendUp,
     accent = false,
     onClick,
-  }: { 
-    title: string; 
-    value: string; 
+  }: {
+    title: string;
+    value: string;
     subtitle?: string;
     icon: React.ElementType;
     trend?: string;
@@ -238,26 +248,39 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     accent?: boolean;
     onClick?: () => void;
   }) => (
-    <Card className={`bg-card border-border hover:border-primary/30 transition-colors ${accent ? 'border-primary/30' : ''} ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className={`text-xs uppercase tracking-wider ${accent ? 'text-primary' : 'text-muted-foreground'}`}>{title}</p>
-            <p className={`text-2xl font-semibold mt-1 ${accent ? 'text-primary' : ''}`}>{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-            {trend && (
-              <div className={`flex items-center gap-1 mt-2 text-xs ${trendUp ? 'text-primary' : 'text-destructive'}`}>
-                {trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                {trend}
-              </div>
-            )}
+    <motion.div variants={fadeUpItem} whileHover={{ y: -2, transition: { duration: 0.15 } }} className="h-full">
+      <Card
+        className={`bg-card border transition-all h-full ${
+          accent ? 'border-primary/25 relative overflow-hidden accent-top' : 'border-border hover:border-primary/20'
+        } ${onClick ? 'cursor-pointer' : ''}`}
+        onClick={onClick}
+      >
+        <CardContent className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">{title}</p>
+              <p className={`text-[1.65rem] font-semibold leading-tight mt-2 tracking-tight ${accent ? 'text-primary' : 'text-foreground'}`}>
+                {value}
+              </p>
+              {subtitle && <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{subtitle}</p>}
+              {trend && (
+                <div className={`inline-flex items-center gap-1 mt-2 text-xs font-medium px-1.5 py-0.5 rounded ${
+                  trendUp ? 'text-primary bg-primary/10' : 'text-destructive bg-destructive/10'
+                }`}>
+                  {trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                  {trend}
+                </div>
+              )}
+            </div>
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              accent ? 'bg-primary/15' : 'bg-secondary'
+            }`}>
+              <Icon className={`w-4 h-4 ${accent ? 'text-primary' : 'text-muted-foreground'}`} />
+            </div>
           </div>
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${accent ? 'bg-primary/20' : 'bg-primary/10'}`}>
-            <Icon className={`w-5 h-5 ${accent ? 'text-primary' : 'text-primary'}`} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 
   // Billing health data
@@ -467,56 +490,56 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       </Card>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          title="Invoiced (Month)" 
+      <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Invoiced (Month)"
           value={formatCurrency(metrics.totalRevenue)}
           subtitle={`${metrics.clientProjects} project${metrics.clientProjects !== 1 ? 's' : ''} · projected`}
           icon={TrendingUp}
         />
-        <StatCard 
-          title="Received (Month)" 
+        <StatCard
+          title="Received (Month)"
           value={formatCurrency(metrics.totalReceivedThisMonth)}
           subtitle="Cash received via Billing"
           icon={Wallet}
           accent
         />
-        <StatCard 
-          title="Bonus Pool" 
+        <StatCard
+          title="Bonus Pool"
           value={formatCurrency(metrics.totalBonusPool)}
           subtitle={`${state.settings.revenueSplit.bonusPercent}% of net profit · projected`}
           icon={Award}
         />
-        <StatCard 
-          title="Company Fund" 
+        <StatCard
+          title="Company Fund"
           value={formatCurrency(metrics.totalCompanyContribution)}
           subtitle={`${state.settings.revenueSplit.companyPercent}% of net profit · projected`}
           icon={Briefcase}
         />
-      </div>
+      </motion.div>
 
       {/* Secondary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          title="Working Capital" 
+      <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard
+          title="Working Capital"
           value={formatCurrency(state.wcBalance || 0)}
           subtitle="Click to manage → Working Capital Bank"
           icon={Wallet}
           onClick={() => onViewChange?.('capital')}
         />
-        <StatCard 
-          title="Monthly Stipends" 
+        <StatCard
+          title="Monthly Stipends"
           value={formatCurrency(activeMembers.reduce((s, m) => s + m.stipend, 0))}
           subtitle="Pay from Working Capital"
           icon={PiggyBank}
         />
-        <StatCard 
-          title="Contribution Bank" 
+        <StatCard
+          title="Contribution Bank"
           value={`${totalContributionBank} pts`}
           subtitle="Team points this quarter"
           icon={Clock}
         />
-      </div>
+      </motion.div>
 
       {/* Project Counts */}
       <Card className="bg-card border-border">
@@ -687,39 +710,58 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
 
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Team Leaderboard */}
+        {/* Team Pulse */}
         <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Team Leaderboard</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Team Pulse</CardTitle>
+              <span className="text-xs text-muted-foreground tabular-nums">{topPerformers.length} active</span>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {topPerformers.map((member) => (
-                <div key={member.id} className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-medium">
-                    {member.name.charAt(0)}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{member.name}</span>
+            <div className="space-y-4">
+              {topPerformers.map((member, i) => {
+                const maxPts = Math.max(...topPerformers.map(m => m.commitment.contributionBankPoints), 1);
+                const pct = maxPts > 0 ? (member.commitment.contributionBankPoints / maxPts) * 100 : 0;
+                return (
+                  <motion.div
+                    key={member.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05, duration: 0.28 }}
+                    className="flex items-center gap-3"
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-semibold text-primary">
+                        {member.name.charAt(0)}
+                      </div>
+                      <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary ring-2 ring-card" />
                     </div>
-                    <div className="text-xs text-muted-foreground">{member.role}</div>
-                    <div className="w-full h-1.5 bg-secondary rounded-full mt-1 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-amber-400"
-                        style={{ width: `${Math.min(100, member.commitment.contributionBankPoints)}%` }}
-                      />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium leading-none block truncate">{member.name}</span>
+                          <span className="text-[11px] text-muted-foreground mt-0.5 block">{member.role}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-primary tabular-nums ml-3 flex-shrink-0">
+                          {member.commitment.contributionBankPoints}
+                        </span>
+                      </div>
+                      <div className="h-[3px] bg-secondary rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-primary"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.55, delay: i * 0.05 + 0.2, ease: 'easeOut' }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-amber-400">{member.commitment.contributionBankPoints}</div>
-                    <div className="text-xs text-muted-foreground">bank pts</div>
-                  </div>
-                </div>
-              ))}
+                  </motion.div>
+                );
+              })}
               {topPerformers.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
-                  No commitment data yet. Log work entries to see team performance.
+                  No team data yet. Log work entries to see pulse.
                 </div>
               )}
             </div>
