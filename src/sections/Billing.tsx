@@ -763,7 +763,7 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                         n: selected.number,
                         tot: selected.total,
                         cur: selected.currency,
-                        li: (selected.lineItems || []).map((li: any) => ({ d: li.description.slice(0, 60), t: li.total })),
+                        li: (selected.lineItems || []).map((li: any) => ({ d: li.description.slice(0, 60), q: li.qty, u: li.unitPrice, t: li.total })),
                         ea: expiresAt,
                         ds: selected.status,
                         cn: billing.settings.companyName || '',

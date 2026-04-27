@@ -160,7 +160,7 @@ function ApprovalPage({ token }: { token: string }) {
   if (payload && payload.n !== undefined) {
     payload = {
       number: payload.n, total: payload.tot, currency: payload.cur,
-      lineItems: (payload.li || []).map((i: any) => ({ description: i.d, total: i.t })),
+      lineItems: (payload.li || []).map((i: any) => ({ description: i.d, qty: i.q, unitPrice: i.u, total: i.t })),
       notes: payload.no || '', validUntil: payload.vu || '', expiresAt: payload.ea,
       projectName: payload.pn || '', docStatus: payload.ds,
       companyName: payload.cn, companyEmail: payload.ce,
