@@ -3397,9 +3397,10 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
       pdf.setFontSize(11); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#FFFFFF');
       pdf.text('Monthly Breakdown', M, y); y += 6;
 
-      // Column left starts + right edges for numeric columns (right-aligned to prevent overflow)
-      const cols  = [M + 2, M + 38, M + 76, M + 114, M + 152];
-      const colsR = [M + 36, M + 74, M + 112, M + 150, W - M - 4]; // 4mm inner padding from right border
+      // Column layout: Month(~28mm) + 4 numeric cols with room for "MK 3,000,000" (~28mm each)
+      // Right-align numeric cols to these right edges: Revenue=84, Received=118, Expenses=152, P/L=188
+      const cols  = [M + 2]; // only cols[0] used (Month, left-aligned)
+      const colsR = [0, M + 66, M + 100, M + 134, W - M - 4];
 
       // Table header
       const breakdownTableStartY = y - 1;

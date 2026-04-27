@@ -247,8 +247,9 @@ export function MonthlySummary() {
     pdfSection('Revenue');
     pdfRow('Total Gross Revenue (Client Projects)', `${sym} ${monthlyData.totalRevenue.toLocaleString()}`);
     pdfRow('Total Direct Expenses', `-${sym} ${monthlyData.totalDirectExpenses.toLocaleString()}`);
-    y += 2;
+    y += 5;
     pdfDivider(true);
+    y += 2;
     doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor('#73F764');
     doc.text('Total Project Net Profit', margin, y);
     doc.text(`${sym} ${monthlyData.totalNetProfit.toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
@@ -265,8 +266,9 @@ export function MonthlySummary() {
     pdfSection('Team Payroll');
     pdfRow('Monthly Stipends Owed', `${sym} ${totalStipends.toLocaleString()}`);
     pdfRow('Total Bonus Pool Distributed', `${sym} ${monthlyData.totalBonusPools.toLocaleString()}`, true);
-    y += 2;
+    y += 5;
     pdfDivider(true);
+    y += 2;
     doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor('#FFFFFF');
     doc.text('Projected Total Payroll', margin, y);
     doc.text(`${sym} ${(totalStipends + monthlyData.totalBonusPools).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
@@ -274,13 +276,13 @@ export function MonthlySummary() {
 
     // ── Per Member Breakdown ──
     pdfSection('Per Member Breakdown');
-    const c1 = margin + 3;
-    const c3 = margin + contentWidth * 0.50;
-    const c4 = margin + contentWidth * 0.68;
-    const c5 = pageWidth - margin - 4; // 4mm inner padding from right border
-    // Right edges for numeric columns (prevent overflow)
-    const c2R = c3 - 4;
-    const c3R = c4 - 4;
+    // Column layout: Member name (~35mm) + Stipend + Bonus + Contrib.Pts + Total
+    // Each numeric col needs ~30mm for "MK 276,591"; Total needs more for larger sums
+    const c1  = margin + 3;         // Member, left-aligned
+    const c2R = margin + 65;        // Stipend right edge  (= 85mm)
+    const c3R = margin + 105;       // Bonus right edge    (= 125mm)
+    const c4  = margin + 110;       // Contrib. Pts left   (= 130mm)
+    const c5  = pageWidth - margin - 4; // Total right edge with 4mm inner padding
     const memberTableStartY = y - 1;
     doc.setFillColor('#1a1a1a');
     doc.roundedRect(margin, y - 1, contentWidth, 7, 1.5, 1.5, 'F');
