@@ -345,7 +345,7 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
     <div style={{ minHeight: '100vh', background: '#0D0D0D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
       <div style={{ width: '280px', textAlign: 'center' }}>
         {logo
-          ? <img src={logo} alt="logo" style={{ height: '36px', objectFit: 'contain', marginBottom: '8px' }} />
+          ? <img src={logo} alt="logo" style={{ height: '36px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
           : <div style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>Inspire<span style={{ color: '#73F764' }}>X</span></div>}
         <div style={{ fontSize: '10px', color: '#555', marginBottom: '28px' }}>Secure access</div>
         <div style={{ fontSize: '13px', color: '#888', marginBottom: '12px' }}>Enter your PIN to continue</div>
