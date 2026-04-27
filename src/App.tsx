@@ -174,7 +174,7 @@ function ApprovalPage({ token }: { token: string }) {
     : undefined;
 
   const settings = payload
-    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: undefined as string | undefined }
+    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: state.billing.settings.logoBase64 || undefined }
     : state.billing.settings;
 
   const doc: any = payload
@@ -339,10 +339,14 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
     }
   };
 
+  const logo = state.billing.settings.logoBase64;
+
   return (
     <div style={{ minHeight: '100vh', background: '#0D0D0D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
       <div style={{ width: '280px', textAlign: 'center' }}>
-        <div style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>Inspire<span style={{ color: '#73F764' }}>X</span></div>
+        {logo
+          ? <img src={logo} alt="logo" style={{ height: '36px', objectFit: 'contain', marginBottom: '8px' }} />
+          : <div style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>Inspire<span style={{ color: '#73F764' }}>X</span></div>}
         <div style={{ fontSize: '10px', color: '#555', marginBottom: '28px' }}>Secure access</div>
         <div style={{ fontSize: '13px', color: '#888', marginBottom: '12px' }}>Enter your PIN to continue</div>
         <input type="password" value={pin} onChange={e => setPin(e.target.value)} onKeyDown={e => e.key === 'Enter' && attempt()}
