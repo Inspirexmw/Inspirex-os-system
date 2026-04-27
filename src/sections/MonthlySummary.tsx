@@ -277,11 +277,11 @@ export function MonthlySummary() {
     // ── Per Member Breakdown ──
     pdfSection('Per Member Breakdown');
     // 5-col layout across 170mm content:
-    // Member(left) | Stipend(R=85) | Bonus(R=115) | Contrib.Pts(R=150) | Total(R=186)
+    // Member(left) | Stipend(R=85) | Bonus(R=123) | Contrib.Pts(R=150) | Total(R=186)
     // Bonus→Contrib gap: 35mm — safe even when point values grow to 4 digits
     const c1  = margin + 3;              // Member, left-aligned
     const c2R = margin + 65;             // Stipend right edge   (= 85mm)
-    const c3R = margin + 95;             // Bonus right edge     (= 115mm)
+    const c3R = margin + 103;            // Bonus right edge     (= 123mm)
     const c4R = margin + 130;            // Contrib. Pts right edge (= 150mm) — right-aligned
     const c5  = pageWidth - margin - 4;  // Total right edge     (= 186mm)
     const memberTableStartY = y - 1;
