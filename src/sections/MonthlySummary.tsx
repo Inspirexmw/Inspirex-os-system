@@ -246,7 +246,7 @@ export function MonthlySummary() {
     // ── Revenue ──
     pdfSection('Revenue');
     pdfRow('Total Gross Revenue (Client Projects)', `${sym} ${monthlyData.totalRevenue.toLocaleString()}`);
-    pdfRow('Total Direct Expenses', `−${sym} ${monthlyData.totalDirectExpenses.toLocaleString()}`);
+    pdfRow('Total Direct Expenses', `-${sym} ${monthlyData.totalDirectExpenses.toLocaleString()}`);
     y += 2;
     pdfDivider(true);
     doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor('#73F764');
@@ -277,7 +277,7 @@ export function MonthlySummary() {
     const c1 = margin + 3;
     const c3 = margin + contentWidth * 0.50;
     const c4 = margin + contentWidth * 0.68;
-    const c5 = pageWidth - margin;
+    const c5 = pageWidth - margin - 4; // 4mm inner padding from right border
     // Right edges for numeric columns (prevent overflow)
     const c2R = c3 - 4;
     const c3R = c4 - 4;

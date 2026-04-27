@@ -3399,7 +3399,7 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
 
       // Column left starts + right edges for numeric columns (right-aligned to prevent overflow)
       const cols  = [M + 2, M + 38, M + 76, M + 114, M + 152];
-      const colsR = [M + 36, M + 74, M + 112, M + 150, W - M];
+      const colsR = [M + 36, M + 74, M + 112, M + 150, W - M - 4]; // 4mm inner padding from right border
 
       // Table header
       const breakdownTableStartY = y - 1;
