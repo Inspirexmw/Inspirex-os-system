@@ -3397,12 +3397,17 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
       pdf.setFontSize(11); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#FFFFFF');
       pdf.text('Monthly Breakdown', M, y); y += 6;
 
+      // Column left starts + right edges for numeric columns (right-aligned to prevent overflow)
+      const cols  = [M + 2, M + 38, M + 76, M + 114, M + 152];
+      const colsR = [M + 36, M + 74, M + 112, M + 150, W - M];
+
       // Table header
-      pdf.setFillColor('#1a1a1a'); pdf.rect(M, y - 1, CW, 7, 'F');
+      const breakdownTableStartY = y - 1;
+      pdf.setFillColor('#1a1a1a'); pdf.roundedRect(M, y - 1, CW, 7, 1.5, 1.5, 'F');
       pdf.setFontSize(8); pdf.setFont('helvetica', 'bold'); pdf.setTextColor('#888888');
-      const cols = [M + 2, M + 38, M + 78, M + 118, M + 155];
       ['Month', 'Revenue', 'Received', 'Expenses', 'Profit / Loss'].forEach((h, i) => {
-        pdf.text(h, cols[i], y + 4);
+        if (i === 0) pdf.text(h, cols[i], y + 4);
+        else pdf.text(h, colsR[i], y + 4, { align: 'right' });
       });
       y += 8;
 
@@ -3413,7 +3418,8 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
         const pl = (row.profit >= 0 ? '+' : '') + 'MK ' + row.profit.toLocaleString();
         [row.label, 'MK ' + row.revenue.toLocaleString(), 'MK ' + row.received.toLocaleString(), 'MK ' + row.expenses.toLocaleString(), pl].forEach((v, i) => {
           pdf.setTextColor(i === 4 ? (row.profit >= 0 ? '#73F764' : '#f87171') : '#CCCCCC');
-          pdf.text(v, cols[i], y + 4);
+          if (i === 0) pdf.text(v, cols[i], y + 4);
+          else pdf.text(v, colsR[i], y + 4, { align: 'right' });
         });
         y += 7;
       });
@@ -3422,13 +3428,17 @@ function TaxReportView({ invoices, clients, billing, expenses }: any) {
       pdf.setDrawColor('#555555'); pdf.setLineWidth(0.5); pdf.line(M, y, W - M, y); y += 5;
 
       // Totals row
-      pdf.setFillColor('#1a1a1a'); pdf.rect(M, y - 1, CW, 7, 'F');
+      pdf.setFillColor('#1a1a1a'); pdf.roundedRect(M, y - 1, CW, 7, 1.5, 1.5, 'F');
       pdf.setFont('helvetica', 'bold');
       const totPl = (netProfit >= 0 ? '+' : '') + 'MK ' + netProfit.toLocaleString();
       ['TOTAL', 'MK ' + totalRevenue.toLocaleString(), 'MK ' + totalReceived.toLocaleString(), 'MK ' + totalExpenses.toLocaleString(), totPl].forEach((v, i) => {
         pdf.setTextColor(i === 4 ? (netProfit >= 0 ? '#73F764' : '#f87171') : '#FFFFFF');
-        pdf.text(v, cols[i], y + 4);
+        if (i === 0) pdf.text(v, cols[i], y + 4);
+        else pdf.text(v, colsR[i], y + 4, { align: 'right' });
       });
+      // Outer rounded border around full breakdown table
+      pdf.setDrawColor('#2a2a2a'); pdf.setLineWidth(0.3);
+      pdf.roundedRect(M, breakdownTableStartY, CW, y + 6 - breakdownTableStartY, 1.5, 1.5, 'S');
       y += 10;
     }
 

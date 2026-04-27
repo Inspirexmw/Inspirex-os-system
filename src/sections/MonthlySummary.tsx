@@ -239,9 +239,6 @@ export function MonthlySummary() {
     doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#888888');
     doc.text(mLabel, pageWidth - margin, margin + 11, { align: 'right' });
 
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#888888');
-    doc.text(`${state.settings.companyName} · Monthly Financial Report`, margin, y);
-    y += 3;
     doc.setDrawColor('#73F764'); doc.setLineWidth(1);
     doc.line(margin, y, pageWidth - margin, y);
     y += 8;
@@ -278,16 +275,19 @@ export function MonthlySummary() {
     // ── Per Member Breakdown ──
     pdfSection('Per Member Breakdown');
     const c1 = margin + 3;
-    const c2 = margin + contentWidth * 0.32;
     const c3 = margin + contentWidth * 0.50;
     const c4 = margin + contentWidth * 0.68;
     const c5 = pageWidth - margin;
+    // Right edges for numeric columns (prevent overflow)
+    const c2R = c3 - 4;
+    const c3R = c4 - 4;
+    const memberTableStartY = y - 1;
     doc.setFillColor('#1a1a1a');
-    doc.rect(margin, y - 1, contentWidth, 7, 'F');
+    doc.roundedRect(margin, y - 1, contentWidth, 7, 1.5, 1.5, 'F');
     doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor('#888888');
     doc.text('Member', c1, y + 4);
-    doc.text('Stipend', c2, y + 4);
-    doc.text('Bonus', c3, y + 4);
+    doc.text('Stipend', c2R, y + 4, { align: 'right' });
+    doc.text('Bonus', c3R, y + 4, { align: 'right' });
     doc.text('Contrib. Pts', c4, y + 4);
     doc.text('Total', c5, y + 4, { align: 'right' });
     y += 8;
@@ -300,15 +300,18 @@ export function MonthlySummary() {
       }
       doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor('#CCCCCC');
       doc.text(m.memberName, c1, y + 4);
-      doc.text(`${sym} ${Math.round(m.stipendPaid).toLocaleString()}`, c2, y + 4);
+      doc.text(`${sym} ${Math.round(m.stipendPaid).toLocaleString()}`, c2R, y + 4, { align: 'right' });
       doc.setTextColor(me.bonus > 0 ? '#73F764' : '#CCCCCC');
-      doc.text(`${sym} ${Math.round(me.bonus).toLocaleString()}`, c3, y + 4);
+      doc.text(`${sym} ${Math.round(me.bonus).toLocaleString()}`, c3R, y + 4, { align: 'right' });
       doc.setTextColor('#888888');
       doc.text(m.isContract ? '—' : `${m.bankPoints} pts`, c4, y + 4);
       doc.setTextColor('#FFFFFF'); doc.setFont('helvetica', 'bold');
       doc.text(`${sym} ${Math.round(m.stipendPaid + me.bonus).toLocaleString()}`, c5, y + 4, { align: 'right' });
       y += 7;
     });
+    // Outer rounded border around per-member table
+    doc.setDrawColor('#2a2a2a'); doc.setLineWidth(0.3);
+    doc.roundedRect(margin, memberTableStartY, contentWidth, y - memberTableStartY, 1.5, 1.5, 'S');
     y += 6;
 
     // ── Footer ──
