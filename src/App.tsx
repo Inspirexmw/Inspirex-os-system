@@ -165,6 +165,7 @@ function ApprovalPage({ token }: { token: string }) {
       projectName: payload.pn || '', docStatus: payload.ds,
       companyName: payload.cn, companyEmail: payload.ce,
       website: payload.w || '', tagline: payload.tg || '', clientName: payload.cl,
+      logoBase64: payload.lg || undefined,
     };
   }
 
@@ -174,7 +175,7 @@ function ApprovalPage({ token }: { token: string }) {
     : undefined;
 
   const settings = payload
-    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: state.billing.settings.logoBase64 || undefined }
+    ? { companyName: payload.companyName, email: payload.companyEmail, website: payload.website, tagline: payload.tagline, logoBase64: payload.logoBase64 || state.billing.settings.logoBase64 || undefined }
     : state.billing.settings;
 
   const doc: any = payload

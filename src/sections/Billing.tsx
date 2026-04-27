@@ -46,6 +46,29 @@ const statusColor = (status: string) => {
 
 const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 
+// Compress logo to tiny JPEG thumbnail for embedding in approval token
+function compressLogoForToken(logoBase64: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement('img');
+    img.onload = () => {
+      try {
+        const maxW = 80, maxH = 30;
+        const ratio = Math.min(maxW / (img.naturalWidth || maxW), maxH / (img.naturalHeight || maxH), 1);
+        const w = Math.max(1, Math.round((img.naturalWidth || maxW) * ratio));
+        const h = Math.max(1, Math.round((img.naturalHeight || maxH) * ratio));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('no ctx')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.4));
+      } catch (e) { reject(e); }
+    };
+    img.onerror = reject;
+    img.src = logoBase64;
+  });
+}
+
 const nextNumber = (type: DocType | 'receipt', counter: number, settings?: { invoicePrefix?: string; quotePrefix?: string; receiptPrefix?: string; companyCode?: string; invoiceStartNumber?: number }) => {
   const code = settings?.companyCode ? `-${settings.companyCode}` : '';
   const invPrefix = settings?.invoicePrefix || 'INV';
@@ -732,7 +755,7 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                     <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-primary border-primary/40" variant="outline" onClick={() => convertToInvoice(selected)}><ChevronRight className="w-3 h-3" />Convert to Invoice</Button>
                   )}
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => duplicate(selected)}><Copy className="w-3 h-3" />Duplicate</Button>
-                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={() => {
+                  <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={async () => {
                       const inv = billing.clients.find((c: BillingClient) => c.id === selected.clientId);
                       const expiresAt = (selected as any).validUntil || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
                       // Compact payload — short keys + omit empty fields
@@ -752,6 +775,10 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                       if ((selected as any).projectName) approvalPayload.pn = (selected as any).projectName;
                       if (billing.settings.website) approvalPayload.w = billing.settings.website;
                       if (billing.settings.tagline) approvalPayload.tg = billing.settings.tagline;
+                      // Embed compressed logo thumbnail so it shows on any device
+                      if (billing.settings.logoBase64) {
+                        try { approvalPayload.lg = await compressLogoForToken(billing.settings.logoBase64); } catch {}
+                      }
                       const _json = JSON.stringify(approvalPayload);
                       const _bytes = new TextEncoder().encode(_json);
                       const _binStr = Array.from(_bytes, (b: number) => String.fromCharCode(b)).join('');
