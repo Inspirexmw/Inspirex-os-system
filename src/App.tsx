@@ -156,6 +156,17 @@ function ApprovalPage({ token }: { token: string }) {
   } catch {
     try { payload = JSON.parse(decodeURIComponent(atob(token))); } catch {}
   }
+  // Expand compact payload (short keys) → full keys for backward compatibility
+  if (payload && payload.n !== undefined) {
+    payload = {
+      number: payload.n, total: payload.tot, currency: payload.cur,
+      lineItems: (payload.li || []).map((i: any) => ({ description: i.d, total: i.t })),
+      notes: payload.no || '', validUntil: payload.vu || '', expiresAt: payload.ea,
+      projectName: payload.pn || '', docStatus: payload.ds,
+      companyName: payload.cn, companyEmail: payload.ce,
+      website: payload.w || '', tagline: payload.tg || '', clientName: payload.cl,
+    };
+  }
 
   // ── Fallback: local state lookup for old-style token links (same browser only) ──
   const docFromState = !payload

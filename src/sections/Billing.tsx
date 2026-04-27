@@ -735,23 +735,23 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-blue-400 border-blue-500/30" variant="outline" onClick={() => {
                       const inv = billing.clients.find((c: BillingClient) => c.id === selected.clientId);
                       const expiresAt = (selected as any).validUntil || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-                      const approvalPayload = {
-                        number: selected.number,
-                        total: selected.total,
-                        currency: selected.currency,
-                        lineItems: (selected.lineItems || []).map((li: any) => ({ description: li.description, total: li.total })),
-                        notes: selected.notes || '',
-                        validUntil: (selected as any).validUntil || '',
-                        expiresAt,
-                        projectName: (selected as any).projectName || '',
-                        docStatus: selected.status,
-                        companyName: billing.settings.companyName || '',
-                        companyEmail: billing.settings.email || '',
-                        website: billing.settings.website || '',
-                        tagline: billing.settings.tagline || '',
-                        clientName: inv?.name || 'Client',
+                      // Compact payload — short keys + omit empty fields
+                      const approvalPayload: Record<string, any> = {
+                        n: selected.number,
+                        tot: selected.total,
+                        cur: selected.currency,
+                        li: (selected.lineItems || []).map((li: any) => ({ d: li.description.slice(0, 60), t: li.total })),
+                        ea: expiresAt,
+                        ds: selected.status,
+                        cn: billing.settings.companyName || '',
+                        ce: billing.settings.email || '',
+                        cl: inv?.name || 'Client',
                       };
-                      // Unicode-safe base64url (no encodeURIComponent — ~40% shorter than old format)
+                      if (selected.notes) approvalPayload.no = selected.notes;
+                      if ((selected as any).validUntil) approvalPayload.vu = (selected as any).validUntil;
+                      if ((selected as any).projectName) approvalPayload.pn = (selected as any).projectName;
+                      if (billing.settings.website) approvalPayload.w = billing.settings.website;
+                      if (billing.settings.tagline) approvalPayload.tg = billing.settings.tagline;
                       const _json = JSON.stringify(approvalPayload);
                       const _bytes = new TextEncoder().encode(_json);
                       const _binStr = Array.from(_bytes, (b: number) => String.fromCharCode(b)).join('');
@@ -779,8 +779,10 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
                         // Fall back to old format
                         p = JSON.parse(decodeURIComponent(atob(selected.approvalToken)));
                       }
-                      if (p?.expiresAt) { linkExpiry = p.expiresAt; isExpired = p.expiresAt < new Date().toISOString().slice(0, 10); }
-                      if (p?.projectName) { slug = p.projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) + '/'; }
+                      const expAt = p?.ea || p?.expiresAt;
+                      if (expAt) { linkExpiry = expAt; isExpired = expAt < new Date().toISOString().slice(0, 10); }
+                      const pName = p?.pn || p?.projectName;
+                      if (pName) { slug = pName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) + '/'; }
                     } catch {}
                     const origin = billing.settings.customDomain ? 'https://' + billing.settings.customDomain : window.location.origin;
                     const approvalUrl = origin + '/#approve/' + slug + selected.approvalToken;
