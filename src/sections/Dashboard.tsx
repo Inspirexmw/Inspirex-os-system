@@ -259,7 +259,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">{title}</p>
-              <p className={`text-[1.65rem] font-semibold leading-tight mt-2 tracking-tight ${accent ? 'text-primary' : 'text-foreground'}`}>
+              <p className={`text-xl font-semibold leading-tight mt-2 tracking-tight whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
                 {value}
               </p>
               {subtitle && <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{subtitle}</p>}

@@ -680,7 +680,7 @@ export function MonthlySummary() {
                 </CardContent>
               </Card>
             </div>
-            <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs text-muted-foreground">
+            <div className="mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs text-muted-foreground">
               💡 Stipends are paid from your <strong className="text-foreground">Working Capital Bank</strong> — not deducted from project profits. 
               Go to Working Capital to record stipend payments and track your operational expenses.
             </div>
