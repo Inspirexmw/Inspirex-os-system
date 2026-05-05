@@ -59,6 +59,8 @@ const initialState: AppState = {
   wcTransactions: [],
   wcBalance: 0,
   retainedProfit: 0,
+  bonusBankBalance: 0,
+  bonusBankTransactions: [],
   currentQuarter: getCurrentQuarter(),
   lastAutoTransferMonth: '',
   notifications: [],
@@ -91,6 +93,9 @@ type Action =
   | { type: 'ADD_WC_TRANSACTION'; payload: import('@/types').WCTransaction }
   | { type: 'SET_WC_BALANCE'; payload: number }
   | { type: 'CLEAR_WC_DATA' }
+  | { type: 'ADD_BONUS_BANK_TRANSACTION'; payload: import('@/types').BonusBankTransaction }
+  | { type: 'DELETE_BONUS_BANK_TRANSACTION'; payload: string }
+  | { type: 'CLEAR_BONUS_BANK_DATA' }
   | { type: 'LINK_PAYMENT_TO_WC'; payload: { projectId: string; paymentId: string; wcTransactionId: string } }
   | { type: 'DELETE_WC_TRANSACTION'; payload: string }
   | { type: 'EDIT_WC_TRANSACTION'; payload: { id: string; description: string; category: import('@/types').WCCategory; date: string } }
@@ -134,6 +139,8 @@ function appReducer(state: AppState, action: Action): AppState {
         wcTransactions: action.payload.wcTransactions || [],
         wcBalance: action.payload.wcBalance || 0,
         retainedProfit: action.payload.retainedProfit || 0,
+        bonusBankBalance: action.payload.bonusBankBalance || 0,
+        bonusBankTransactions: action.payload.bonusBankTransactions || [],
         billing: {
           clients: action.payload.billing?.clients || [],
           documents: action.payload.billing?.documents || [],
@@ -276,6 +283,22 @@ function appReducer(state: AppState, action: Action): AppState {
                 finalBonus: Math.round(base),
               };
             });
+          // Fix rounding drift: ensure sum of finalBonus equals the pool exactly.
+          // Math.round on each member's share can drift the sum by ±N — absorb it into the largest share.
+          if (newDist.length > 0) {
+            const targetPool = Math.round(linkedProject.bonusPool);
+            const sum = newDist.reduce((s, d) => s + d.finalBonus, 0);
+            const drift = targetPool - sum;
+            if (drift !== 0) {
+              const largestIdx = newDist.reduce(
+                (maxI, d, i, arr) => d.finalBonus > arr[maxI].finalBonus ? i : maxI, 0);
+              newDist[largestIdx] = {
+                ...newDist[largestIdx],
+                baseBonus: newDist[largestIdx].baseBonus + drift,
+                finalBonus: newDist[largestIdx].finalBonus + drift,
+              };
+            }
+          }
           updatedProjects = state.projects.map(p =>
             p.id === linkedProject.id ? { ...p, distribution: newDist } : p
           );
@@ -386,6 +409,35 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, wcBalance: action.payload };
     case 'CLEAR_WC_DATA':
       return { ...state, wcTransactions: [], wcBalance: 0, retainedProfit: 0 };
+
+    case 'ADD_BONUS_BANK_TRANSACTION': {
+      const newBalance = action.payload.type === 'credit'
+        ? (state.bonusBankBalance || 0) + action.payload.amount
+        : (state.bonusBankBalance || 0) - action.payload.amount;
+      return {
+        ...state,
+        bonusBankTransactions: [...(state.bonusBankTransactions || []), { ...action.payload, balanceAfter: newBalance }],
+        bonusBankBalance: newBalance,
+      };
+    }
+    case 'DELETE_BONUS_BANK_TRANSACTION': {
+      const txId = action.payload;
+      const remaining = (state.bonusBankTransactions || []).filter(t => t.id !== txId);
+      // Recalculate running balanceAfter chronologically
+      const sorted = [...remaining].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      let running = 0;
+      const recalculated = sorted.map(t => {
+        running = t.type === 'credit' ? running + t.amount : running - t.amount;
+        return { ...t, balanceAfter: running };
+      });
+      return {
+        ...state,
+        bonusBankTransactions: recalculated,
+        bonusBankBalance: recalculated.length > 0 ? recalculated[recalculated.length - 1].balanceAfter : 0,
+      };
+    }
+    case 'CLEAR_BONUS_BANK_DATA':
+      return { ...state, bonusBankTransactions: [], bonusBankBalance: 0 };
 
     case 'UPDATE_RETAINED_PROFIT':
       return { ...state, retainedProfit: action.payload };

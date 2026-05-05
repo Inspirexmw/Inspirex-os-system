@@ -8,7 +8,8 @@ import {
   AlertTriangle,
   Wallet,
   PiggyBank,
-  Briefcase
+  Briefcase,
+  Shield
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApp } from '@/hooks/useAppState';
@@ -86,23 +87,6 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     // retainedProfit — single source of truth, driven by Billing payments only
     const retainedProfit = state.retainedProfit || 0;
 
-    // Months of runway — requires at least 2 months of outflow data
-    const last3Months = Array.from({ length: 3 }, (_, i) => {
-      const d = new Date(); d.setMonth(d.getMonth() - i);
-      return d.toISOString().slice(0, 7);
-    });
-    const burnByMonth = last3Months.map(m => ({
-      month: m,
-      burn: (state.wcTransactions || [])
-        .filter(t => t.type === 'outflow' && t.date.startsWith(m))
-        .reduce((s, t) => s + t.amount, 0),
-    }));
-    const monthsWithData = burnByMonth.filter(b => b.burn > 0).length;
-    const totalBurn = burnByMonth.reduce((s, b) => s + b.burn, 0);
-    const avgMonthlyBurn = monthsWithData > 0 ? totalBurn / monthsWithData : 0;
-    const hasEnoughRunwayData = monthsWithData >= 2;
-    const monthsOfRunway = hasEnoughRunwayData && avgMonthlyBurn > 0 ? retainedProfit / avgMonthlyBurn : 0;
-
     // Total deferred
     const totalDeferred = activeMembers.reduce((s, m) => s + (m.deferredStipendBalance || 0), 0);
 
@@ -150,9 +134,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       totalOutstanding,
       totalReceivedThisMonth,
       retainedProfit,
-      monthsOfRunway,
       totalDeferred,
-      avgMonthlyBurn,
       totalPoints,
       clientProjects,
       internalProjects,
@@ -162,28 +144,32 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       autoTransferPending,
       suggestedTransfer,
       autoTransferPercent,
-      hasEnoughRunwayData,
-      monthsWithData,
     };
   }, [state.projects, state.workLog, activeMembers, currentMonth]);
 
-  // Working Capital health
+  // Working Capital health — based on stipend runway
   const wcHealth = useMemo(() => {
     const balance = state.wcBalance || 0;
-    const lowBalanceAlert = state.settings.workingCapital?.lowBalanceAlert ?? 300000;
     const hasTransactions = state.wcTransactions && state.wcTransactions.length > 0;
+    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
+    const runwayRed = state.settings.workingCapital?.runwayRedThreshold ?? 3;
+    const runwayAmber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
 
-    // No transactions yet — not set up
     if (balance === 0 && !hasTransactions) {
       return { status: 'setup', color: 'text-muted-foreground', bg: 'bg-secondary/50', border: 'border-border', icon: <Wallet className="w-5 h-5" />, message: 'Working Capital not set up yet — add your first top-up in the Working Capital Bank' };
     }
-    // Below alert threshold — critical
-    if (balance < lowBalanceAlert && hasTransactions) {
-      return { status: 'alert', color: 'text-destructive', bg: 'bg-destructive/20', border: 'border-destructive/30', icon: <AlertTriangle className="w-5 h-5" />, message: `Low Working Capital — ${formatCurrency(balance)} available. Top up needed.` };
+    if (totalStipends === 0) {
+      return { status: 'healthy', color: 'text-primary', bg: 'bg-primary/20', border: 'border-primary/30', icon: <Wallet className="w-5 h-5" />, message: `Working Capital — ${formatCurrency(balance)} available` };
     }
-    // Healthy — balance is at or above the alert threshold
-    return { status: 'healthy', color: 'text-primary', bg: 'bg-primary/20', border: 'border-primary/30', icon: <Wallet className="w-5 h-5" />, message: `Working Capital healthy — ${formatCurrency(balance)} available` };
-  }, [state.wcBalance, state.wcTransactions, state.settings.workingCapital, formatCurrency]);
+    const runway = Math.floor(balance / totalStipends);
+    if (balance < totalStipends || runway < runwayRed) {
+      return { status: 'alert', color: 'text-destructive', bg: 'bg-destructive/20', border: 'border-destructive/30', icon: <AlertTriangle className="w-5 h-5" />, message: `Stipend runway critical — ${formatCurrency(balance)} covers ${runway < 1 ? 'less than 1' : runway} month${runway !== 1 ? 's' : ''}. Top up WC or transfer from Company Fund.` };
+    }
+    if (runway < runwayAmber) {
+      return { status: 'warn', color: 'text-amber-400', bg: 'bg-amber-500/15', border: 'border-amber-500/30', icon: <AlertTriangle className="w-5 h-5" />, message: `Stipend runway tight — ${formatCurrency(balance)} covers ${runway} months.` };
+    }
+    return { status: 'healthy', color: 'text-primary', bg: 'bg-primary/20', border: 'border-primary/30', icon: <Wallet className="w-5 h-5" />, message: `Working Capital healthy — ${formatCurrency(balance)} (${runway} months stipend runway)` };
+  }, [state.wcBalance, state.wcTransactions, state.settings.workingCapital, activeMembers, formatCurrency]);
 
   // Monthly trend data
   const trendData: TrendData[] = useMemo(() => {
@@ -519,14 +505,36 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       </motion.div>
 
       {/* Secondary Metrics */}
-      <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Working Capital"
           value={formatCurrency(state.wcBalance || 0)}
-          subtitle="Click to manage → Working Capital Bank"
+          subtitle="Operations account"
           icon={Wallet}
           onClick={() => onViewChange?.('capital')}
         />
+        {(() => {
+          const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
+          const wc = state.wcBalance || 0;
+          const runway = totalStipends > 0 ? Math.floor(wc / totalStipends) : 0;
+          const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
+          const burdenPct = wc > 0 && totalStipends > 0 ? Math.round((totalStipends / wc) * 100) : 0;
+          const label = totalStipends === 0 ? 'No stipends'
+            : wc < totalStipends ? '< 1 month'
+            : `${runway} month${runway !== 1 ? 's' : ''}`;
+          const subtitle = totalStipends === 0 ? 'No stipends configured'
+            : `${burdenPct}% of WC · click to plan`;
+          return (
+            <StatCard
+              title="Stipend Runway"
+              value={label}
+              subtitle={subtitle}
+              icon={Shield}
+              accent={runway >= amber && totalStipends > 0}
+              onClick={() => onViewChange?.('capital')}
+            />
+          );
+        })()}
         <StatCard
           title="Monthly Stipends"
           value={formatCurrency(activeMembers.reduce((s, m) => s + m.stipend, 0))}
@@ -561,47 +569,14 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
         </CardContent>
       </Card>
 
-      {/* Retained Profit / Runway / Deferred Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Retained Profit / Deferred Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Retained Profit */}
         <Card className="bg-card border-border border-primary/20">
           <CardContent className="p-5">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Retained Profit</div>
             <div className="text-2xl font-semibold text-primary">{formatCurrency(metrics.retainedProfit)}</div>
             <div className="text-xs text-muted-foreground mt-1">Accumulated company earnings</div>
-          </CardContent>
-        </Card>
-
-        {/* Months of Runway */}
-        <Card className={`bg-card border ${
-          !metrics.hasEnoughRunwayData
-            ? 'border-border'
-            : metrics.monthsOfRunway < (state.settings.workingCapital?.runwayRedThreshold ?? 3)
-            ? 'border-destructive/50'
-            : metrics.monthsOfRunway < (state.settings.workingCapital?.runwayAmberThreshold ?? 6)
-            ? 'border-amber-500/50'
-            : 'border-primary/30'
-        }`}>
-          <CardContent className="p-5">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Months of Runway</div>
-            <div className={`text-2xl font-semibold ${
-              !metrics.hasEnoughRunwayData
-                ? 'text-muted-foreground'
-                : metrics.monthsOfRunway < (state.settings.workingCapital?.runwayRedThreshold ?? 3)
-                ? 'text-destructive'
-                : metrics.monthsOfRunway < (state.settings.workingCapital?.runwayAmberThreshold ?? 6)
-                ? 'text-amber-400'
-                : 'text-primary'
-            }`}>
-              {metrics.hasEnoughRunwayData && metrics.monthsOfRunway > 0
-                ? `${metrics.monthsOfRunway.toFixed(1)} mo`
-                : '—'}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {!metrics.hasEnoughRunwayData
-                ? `Need 2+ months of expense data (${metrics.monthsWithData} recorded)`
-                : `Avg burn: ${formatCurrency(Math.round(metrics.avgMonthlyBurn))}/mo`}
-            </div>
           </CardContent>
         </Card>
 

@@ -347,21 +347,25 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
       }
     }
 
-    // 4. Low WC balance
+    // 4. Stipend runway critical (replaces old fixed-MWK low-balance alert)
     const wcBalance = state.wcBalance || 0;
-    const threshold = state.settings.workingCapital?.lowBalanceAlert ?? 300000;
-    if (wcBalance < threshold && wcBalance > 0) {
-      const hasWC = existing.some(n => n.type === 'wc_low' && !n.dismissed);
-      if (!hasWC) {
-        dispatch({ type: 'ADD_NOTIFICATION', payload: {
-          id: 'wc-low-' + today.toISOString().slice(0,10),
-          type: 'wc_low',
-          title: 'Working Capital balance low',
-          message: `WC balance MK ${wcBalance.toLocaleString()} is below your alert threshold of MK ${threshold.toLocaleString()}.`,
-          createdAt: new Date().toISOString(),
-          read: false, dismissed: false,
-          actionData: { balance: wcBalance, threshold },
-        }});
+    const totalStipends = (state.members || []).filter((m: any) => m.isActive).reduce((s: number, m: any) => s + (m.stipend || 0), 0);
+    const runwayRed = state.settings.workingCapital?.runwayRedThreshold ?? 3;
+    if (totalStipends > 0 && wcBalance > 0) {
+      const runway = Math.floor(wcBalance / totalStipends);
+      if (runway < runwayRed) {
+        const hasWC = existing.some(n => n.type === 'wc_low' && !n.dismissed);
+        if (!hasWC) {
+          dispatch({ type: 'ADD_NOTIFICATION', payload: {
+            id: 'wc-low-' + today.toISOString().slice(0,10),
+            type: 'wc_low',
+            title: 'Stipend runway critical',
+            message: `WC covers only ${runway} month${runway !== 1 ? 's' : ''} of stipends (threshold: ${runwayRed}). Top up WC or transfer from Company Fund.`,
+            createdAt: new Date().toISOString(),
+            read: false, dismissed: false,
+            actionData: { balance: wcBalance, runway, threshold: runwayRed },
+          }});
+        }
       }
     }
 

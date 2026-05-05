@@ -502,58 +502,88 @@ export function Settings() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">Stipend Protection Thresholds</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Controls when and how much of team stipends are paid based on monthly revenue.
+            Controls how much of team stipends are paid based on revenue coverage of payroll. Auto-scales with team size — no MWK amounts to maintain.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Full Payment Threshold (MK)</Label>
-              <Input
-                type="number"
-                value={settings.stipendProtection.fullThreshold}
-                onChange={(e) => updateSetting('stipendProtection.fullThreshold', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-              <p className="text-xs text-muted-foreground">Revenue above this → 100% of stipends paid.</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Partial Payment Threshold (MK)</Label>
-              <Input
-                type="number"
-                value={settings.stipendProtection.partialThreshold}
-                onChange={(e) => updateSetting('stipendProtection.partialThreshold', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-              <p className="text-xs text-muted-foreground">Revenue below this → reduced stipend rate applies.</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Between Thresholds Rate (%)</Label>
-              <Input
-                type="number"
-                min={0} max={100}
-                value={settings.stipendProtection.betweenThresholdRate}
-                onChange={(e) => updateSetting('stipendProtection.betweenThresholdRate', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-              <p className="text-xs text-muted-foreground">% of stipend paid when revenue is between the two thresholds.</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Below Threshold Rate (%)</Label>
-              <Input
-                type="number"
-                min={0} max={100}
-                value={settings.stipendProtection.belowThresholdRate}
-                onChange={(e) => updateSetting('stipendProtection.belowThresholdRate', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-              <p className="text-xs text-muted-foreground">% of stipend paid when revenue is below the partial threshold.</p>
-            </div>
-          </div>
-          <div className="p-3 bg-secondary/30 rounded-lg text-xs text-muted-foreground">
-            Example: Full threshold MK 400,000 · Partial threshold MK 200,000 · Between rate 70% · Below rate 50%
-            <br />If monthly revenue = MK 300,000 → each member receives 70% of their stipend. Remainder is deferred.
-          </div>
+          {(() => {
+            const totalStipends = (state.members || []).filter((m: any) => m.isActive).reduce((s: number, m: any) => s + (m.stipend || 0), 0);
+            // Auto-migrate display values: prefer new fields, derive from legacy MWK if needed
+            const sp: any = settings.stipendProtection || {};
+            const fullPct = sp.fullCoverageMultiplier ?? (sp.fullThreshold !== undefined && totalStipends > 0
+              ? Math.round((sp.fullThreshold / totalStipends) * 100) : 100);
+            const partialPct = sp.partialCoverageMultiplier ?? (sp.partialThreshold !== undefined && totalStipends > 0
+              ? Math.round((sp.partialThreshold / totalStipends) * 100) : 70);
+            const sym = settings.currencySymbol || 'MK';
+            const fullAmt = Math.round(totalStipends * fullPct / 100);
+            const partialAmt = Math.round(totalStipends * partialPct / 100);
+            return (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Full Payout Coverage (%)</Label>
+                    <Input
+                      type="number" min={0}
+                      value={fullPct}
+                      onChange={(e) => updateSetting('stipendProtection.fullCoverageMultiplier', parseInt(e.target.value) || 0)}
+                      className="bg-secondary border-input"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Revenue ≥ this % of stipends → 100% payout. Currently: <span className="text-foreground">{sym} {fullAmt.toLocaleString()}</span>
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Partial Payout Coverage (%)</Label>
+                    <Input
+                      type="number" min={0}
+                      value={partialPct}
+                      onChange={(e) => updateSetting('stipendProtection.partialCoverageMultiplier', parseInt(e.target.value) || 0)}
+                      className="bg-secondary border-input"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Revenue ≥ this % of stipends → partial payout. Currently: <span className="text-foreground">{sym} {partialAmt.toLocaleString()}</span>
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Between Thresholds Rate (%)</Label>
+                    <Input
+                      type="number"
+                      min={0} max={100}
+                      value={settings.stipendProtection.betweenThresholdRate}
+                      onChange={(e) => updateSetting('stipendProtection.betweenThresholdRate', parseInt(e.target.value) || 0)}
+                      className="bg-secondary border-input"
+                    />
+                    <p className="text-xs text-muted-foreground">% of obligation paid when between the two thresholds.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Below Threshold Rate (%)</Label>
+                    <Input
+                      type="number"
+                      min={0} max={100}
+                      value={settings.stipendProtection.belowThresholdRate}
+                      onChange={(e) => updateSetting('stipendProtection.belowThresholdRate', parseInt(e.target.value) || 0)}
+                      className="bg-secondary border-input"
+                    />
+                    <p className="text-xs text-muted-foreground">% of obligation paid when revenue is below the partial threshold.</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-secondary/30 rounded-lg text-xs text-muted-foreground space-y-1">
+                  <div>
+                    <span className="text-foreground font-medium">Live preview:</span> total active stipends = <span className="text-foreground">{sym} {totalStipends.toLocaleString()}</span>
+                  </div>
+                  {totalStipends === 0 ? (
+                    <div className="text-amber-400">No active stipends — protection rule is currently dormant.</div>
+                  ) : (
+                    <div>
+                      Full ≥ <span className="text-foreground">{sym} {fullAmt.toLocaleString()}</span> ({fullPct}% coverage) → 100% ·
+                      Partial ≥ <span className="text-foreground">{sym} {partialAmt.toLocaleString()}</span> ({partialPct}% coverage) → {settings.stipendProtection.betweenThresholdRate}% ·
+                      Below → {settings.stipendProtection.belowThresholdRate}%
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -562,32 +592,20 @@ export function Settings() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">Working Capital Bank</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Controls for your operations account — balance alerts and month-end auto-transfer settings.
+            Controls for your operations account — month-end auto-transfer from Company Fund.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Low WC Balance Alert (MK)</Label>
-              <Input
-                type="number"
-                value={settings.workingCapital.lowBalanceAlert}
-                onChange={(e) => updateSetting('workingCapital.lowBalanceAlert', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-              <p className="text-xs text-muted-foreground">Show alert when WC balance falls below this amount.</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Month-end Auto Transfer % of Company Fund</Label>
-              <Input
-                type="number"
-                min={0} max={100}
-                value={settings.workingCapital.autoTransferPercent ?? 0}
-                onChange={(e) => updateSetting('workingCapital.autoTransferPercent', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-              <p className="text-xs text-muted-foreground">Within last 3 days of each month, system prompts to transfer this % of confirmed company fund into WC. 0 = disabled.</p>
-            </div>
+          <div className="space-y-2">
+            <Label>Month-end Auto Transfer % of Company Fund</Label>
+            <Input
+              type="number"
+              min={0} max={100}
+              value={settings.workingCapital.autoTransferPercent ?? 0}
+              onChange={(e) => updateSetting('workingCapital.autoTransferPercent', parseInt(e.target.value) || 0)}
+              className="bg-secondary border-input md:max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground">Within last 3 days of each month, system prompts to transfer this % of <em>this month's</em> confirmed company fund into WC. 0 = disabled.</p>
           </div>
           <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
             <div>

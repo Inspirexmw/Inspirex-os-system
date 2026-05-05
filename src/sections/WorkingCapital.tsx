@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Plus, Download, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight,
-         TrendingUp, Edit2, Trash2, Check, X, Users, ChevronDown, ChevronRight } from 'lucide-react';
+         TrendingUp, Edit2, Trash2, Check, X, Users, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,21 +10,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { useApp } from '@/hooks/useAppState';
 import { useToast } from '@/hooks/use-toast';
-import type { WCTransaction, WCCategory, AppNotification } from '@/types';
+import type { WCTransaction, WCCategory, BonusBankTransaction, AppNotification } from '@/types';
 
 // ─── Category Config ──────────────────────────────────────────────────────────
 
 const INFLOW_CATS: { value: WCCategory; label: string }[] = [
   { value: 'client_payment',          label: '💼 Client Payment' },
-  { value: 'profit_to_wc_operations', label: '🔄 From Profit — Operations' },
-  { value: 'profit_to_wc_capital',    label: '📈 From Profit — Capital Investment' },
+  { value: 'profit_to_wc_operations', label: '🔄 From Company Fund — Operations' },
+  { value: 'profit_to_wc_capital',    label: '📈 From Company Fund — Capital Investment' },
   { value: 'manual_topup',            label: '💰 Manual Top-up' },
   { value: 'other',                   label: '📝 Other Inflow' },
 ];
 
 const OUTFLOW_CATS: { value: WCCategory; label: string }[] = [
   { value: 'salary',          label: '👤 Salary / Stipend' },
-  { value: 'bonus',           label: '🎯 Team Bonus' },
   { value: 'bill',            label: '🧾 Bill / Utility / Internet' },
   { value: 'subscription',    label: '💻 Subscription (monthly)' },
   { value: 'project_expense', label: '📦 Project Expense' },
@@ -47,6 +46,7 @@ const CAT_LABEL: Partial<Record<WCCategory, string>> = {
   payroll:                 '💵 Payroll',
   salary:                  '👤 Salary / Stipend',
   bonus:                   '🎯 Bonus',
+  bonus_to_bank:           '🏦 → Bonus Bank',
   bill:                    '🧾 Bill',
   subscription:            '💻 Subscription',
   project_expense:         '📦 Project Expense',
@@ -68,6 +68,7 @@ const CAT_COLOR: Partial<Record<WCCategory, string>> = {
   manual_topup:            'text-emerald-400',
   salary:                  'text-blue-400',
   bonus:                   'text-primary',
+  bonus_to_bank:           'text-[#73F764]',
   bill:                    'text-red-400',
   subscription:            'text-purple-400',
   project_expense:         'text-amber-400',
@@ -109,11 +110,14 @@ export function WorkingCapital() {
   const [showStipendPanel, setShowStipendPanel] = useState(false);
   const [stipendAmounts, setStipendAmounts] = useState<Record<string, string>>({});
 
+  // Bonus Bank panel
+
   const currentMonth = new Date().toISOString().slice(0, 7);
   const wcBalance = state.wcBalance || 0;
   const wcTransactions = state.wcTransactions || [];
   const retainedProfit = state.retainedProfit || 0;
-  const lowBalanceAlert = state.settings.workingCapital?.lowBalanceAlert ?? 300000;
+  const bonusBankBalance = state.bonusBankBalance || 0;
+  const bonusBankTransactions = state.bonusBankTransactions || [];
 
   // Month-end auto-transfer prompt
   const today = new Date();
@@ -161,18 +165,19 @@ export function WorkingCapital() {
     dispatch({ type: 'MARK_AUTO_TRANSFER_HANDLED', payload: currentMonth });
     toast({ title: 'Transfer skipped', description: 'Will not prompt again this month' });
   };
-  const isLowBalance = wcBalance < lowBalanceAlert && wcTransactions.length > 0;
   const isCapital = CAPITAL_CATS.includes(txCat);
 
-  // Monthly stats
+  // Monthly stats — outflows exclude internal transfers (bonus_to_bank, client_to_retained)
+  // so the card reflects real operational spending, not money routed to other buckets.
   const stats = useMemo(() => {
     const txs = wcTransactions.filter(t => t.date.startsWith(currentMonth));
+    const isInternalTransfer = (cat?: string) => cat === 'bonus_to_bank' || cat === 'client_to_retained';
     return {
       inflows:        txs.filter(t => t.type === 'inflow').reduce((s, t) => s + t.amount, 0),
-      outflows:       txs.filter(t => t.type === 'outflow').reduce((s, t) => s + t.amount, 0),
+      outflows:       txs.filter(t => t.type === 'outflow' && !isInternalTransfer(t.category)).reduce((s, t) => s + t.amount, 0),
       clientPayments: txs.filter(t => t.category === 'client_payment').reduce((s, t) => s + t.amount, 0),
       profitDrawn:    txs.filter(t => t.category?.startsWith('profit_to_wc')).reduce((s, t) => s + t.amount, 0),
-      salaries:       txs.filter(t => t.category === 'salary').reduce((s, t) => s + t.amount, 0),
+      salaries:       txs.filter(t => t.category === 'salary' || t.category === 'payroll').reduce((s, t) => s + t.amount, 0),
     };
   }, [wcTransactions, currentMonth]);
 
@@ -185,33 +190,69 @@ export function WorkingCapital() {
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [wcTransactions, filterMonth, filterCat]);
 
-  // Group payroll transactions by month into collapsible rows
+  // Bonus Bank transactions filtered by the same month/category controls
+  const filteredBbTxs = useMemo(() => {
+    return bonusBankTransactions.filter(t => {
+      if (filterMonth !== 'all-months' && !t.date.startsWith(filterMonth)) return false;
+      // Category filter is WC-specific; when a specific WC category is selected, hide BB rows.
+      if (filterCat !== 'all') return false;
+      return true;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [bonusBankTransactions, filterMonth, filterCat]);
+
+  // Combined ledger: WC + BB merged chronologically; payroll & bonus_payout grouped by month
   const groupedLedgerRows = useMemo(() => {
     type LedgerRow =
       | { kind: 'tx'; tx: WCTransaction }
-      | { kind: 'payroll-group'; month: string; txs: WCTransaction[]; total: number; balanceAfter: number };
+      | { kind: 'bb-tx'; tx: BonusBankTransaction }
+      | { kind: 'payroll-group'; month: string; txs: WCTransaction[]; total: number; balanceAfter: number }
+      | { kind: 'bb-payout-group'; month: string; txs: BonusBankTransaction[]; total: number; balanceAfter: number };
+
+    type Merged = { date: string; account: 'wc' | 'bb'; wc?: WCTransaction; bb?: BonusBankTransaction };
+    const merged: Merged[] = [
+      ...filteredTxs.map(tx => ({ date: tx.date, account: 'wc' as const, wc: tx })),
+      ...filteredBbTxs.map(tx => ({ date: tx.date, account: 'bb' as const, bb: tx })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const rows: LedgerRow[] = [];
     const seenPayrollMonths = new Set<string>();
+    const seenBbPayoutMonths = new Set<string>();
 
-    for (const tx of filteredTxs) {
-      if (tx.category === 'payroll') {
-        const month = tx.date.slice(0, 7);
-        if (!seenPayrollMonths.has(month)) {
-          seenPayrollMonths.add(month);
-          const monthPayrolls = filteredTxs.filter(t => t.category === 'payroll' && t.date.startsWith(month));
-          const total = monthPayrolls.reduce((s, t) => s + t.amount, 0);
-          // balanceAfter = the last payroll tx in chronological order for that month
-          const sorted = [...monthPayrolls].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-          const balanceAfter = sorted[sorted.length - 1].balanceAfter;
-          rows.push({ kind: 'payroll-group', month, txs: monthPayrolls, total, balanceAfter });
+    for (const m of merged) {
+      if (m.account === 'wc' && m.wc) {
+        const tx = m.wc;
+        if (tx.category === 'payroll') {
+          const month = tx.date.slice(0, 7);
+          if (!seenPayrollMonths.has(month)) {
+            seenPayrollMonths.add(month);
+            const monthPayrolls = filteredTxs.filter(t => t.category === 'payroll' && t.date.startsWith(month));
+            const total = monthPayrolls.reduce((s, t) => s + t.amount, 0);
+            const sorted = [...monthPayrolls].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const balanceAfter = sorted[sorted.length - 1].balanceAfter;
+            rows.push({ kind: 'payroll-group', month, txs: monthPayrolls, total, balanceAfter });
+          }
+        } else {
+          rows.push({ kind: 'tx', tx });
         }
-      } else {
-        rows.push({ kind: 'tx', tx });
+      } else if (m.account === 'bb' && m.bb) {
+        const tx = m.bb;
+        if (tx.category === 'bonus_payout') {
+          const month = tx.date.slice(0, 7);
+          if (!seenBbPayoutMonths.has(month)) {
+            seenBbPayoutMonths.add(month);
+            const monthPayouts = filteredBbTxs.filter(t => t.category === 'bonus_payout' && t.date.startsWith(month));
+            const total = monthPayouts.reduce((s, t) => s + t.amount, 0);
+            const sorted = [...monthPayouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const balanceAfter = sorted[sorted.length - 1].balanceAfter;
+            rows.push({ kind: 'bb-payout-group', month, txs: monthPayouts, total, balanceAfter });
+          }
+        } else {
+          rows.push({ kind: 'bb-tx', tx });
+        }
       }
     }
     return rows;
-  }, [filteredTxs]);
+  }, [filteredTxs, filteredBbTxs]);
 
   // Expense breakdown
   const expBreakdown = useMemo(() => {
@@ -231,10 +272,64 @@ export function WorkingCapital() {
     activeMembers.reduce((s, m) => s + (m.deferredStipendBalance || 0), 0),
   [activeMembers]);
 
-  // Init stipend amounts when panel opens
+  // Stipend Protection — coverage-ratio thresholds (revenue ÷ stipends)
+  const thresholdStatus = useMemo(() => {
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    const confirmedProjects = state.projects.filter(p =>
+      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
+    );
+    const revenue = confirmedProjects.reduce((s, p) => s + (p.revenue || 0), 0);
+    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
+    const protection = state.settings.stipendProtection || {} as any;
+
+    // Skip rule entirely when there are no stipend obligations
+    if (totalStipends === 0) {
+      return {
+        skipped: true, revenue, totalStipends: 0, coverage: 0,
+        rate: 100, status: 'full' as const,
+        fullMultiplier: 0, partialMultiplier: 0, fullThresholdAmount: 0, partialThresholdAmount: 0,
+        betweenRate: 70, belowRate: 50,
+      };
+    }
+
+    // Resolve coverage multipliers — auto-migrate from legacy MWK thresholds if present
+    const fullMultiplier = protection.fullCoverageMultiplier !== undefined
+      ? protection.fullCoverageMultiplier
+      : protection.fullThreshold !== undefined
+      ? Math.round((protection.fullThreshold / totalStipends) * 100)
+      : 100;
+    const partialMultiplier = protection.partialCoverageMultiplier !== undefined
+      ? protection.partialCoverageMultiplier
+      : protection.partialThreshold !== undefined
+      ? Math.round((protection.partialThreshold / totalStipends) * 100)
+      : 70;
+
+    const fullThresholdAmount = totalStipends * (fullMultiplier / 100);
+    const partialThresholdAmount = totalStipends * (partialMultiplier / 100);
+    const coverage = totalStipends > 0 ? Math.round((revenue / totalStipends) * 100) : 0;
+    const betweenRate = protection.betweenThresholdRate ?? 70;
+    const belowRate = protection.belowThresholdRate ?? 50;
+
+    let rate = 100;
+    let status: 'full' | 'partial_between' | 'partial_below' = 'full';
+    if (revenue >= fullThresholdAmount) {
+      rate = 100; status = 'full';
+    } else if (revenue >= partialThresholdAmount) {
+      rate = betweenRate; status = 'partial_between';
+    } else {
+      rate = belowRate; status = 'partial_below';
+    }
+    return {
+      skipped: false, revenue, totalStipends, coverage,
+      rate, status,
+      fullMultiplier, partialMultiplier, fullThresholdAmount, partialThresholdAmount,
+      betweenRate, belowRate,
+    };
+  }, [state.projects, state.settings.stipendProtection, confirmedProjectIds, activeMembers]);
+
+  // Init stipend amounts when panel opens — pre-fills using Stipend Protection rate
   const openStipendPanel = useCallback(() => {
     const currentMonthStr = new Date().toISOString().slice(0, 7);
-    // Only CONFIRMED projects — bonuses from projected projects are not payable yet
     const confirmedProjects = state.projects.filter(p =>
       p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
     );
@@ -244,12 +339,14 @@ export function WorkingCapital() {
         p.distribution.find(d => d.memberId === m.id && d.finalBonus > 0)
       );
       if (m.stipend > 0 || hasConfirmedBonus) {
-        initial[m.id] = String(m.stipend + (m.deferredStipendBalance || 0));
+        const obligation = m.stipend + (m.deferredStipendBalance || 0);
+        const payAmount = Math.round(obligation * thresholdStatus.rate / 100);
+        initial[m.id] = String(payAmount);
       }
     });
     setStipendAmounts(initial);
     setShowStipendPanel(true);
-  }, [activeMembers, state.projects]);
+  }, [activeMembers, state.projects, confirmedProjectIds, thresholdStatus]);
 
   const totalPaying = useMemo(() =>
     Object.values(stipendAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0),
@@ -261,14 +358,18 @@ export function WorkingCapital() {
     const confirmedProjects = state.projects.filter(p =>
       p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
     );
-    return activeMembers.reduce((sum, m) => {
+    const raw = activeMembers.reduce((sum, m) => {
       const bonus = confirmedProjects.reduce((s, p) => {
         const dist = p.distribution.find(d => d.memberId === m.id);
         return s + (dist?.finalBonus || 0);
       }, 0);
       return sum + Math.round(bonus);
     }, 0);
-  }, [activeMembers, state.projects, confirmedProjectIds]);
+    // Cap at Bonus Bank balance if drift ≤ active members count (rounding artifact)
+    const drift = raw - bonusBankBalance;
+    if (drift > 0 && drift <= activeMembers.length) return bonusBankBalance;
+    return raw;
+  }, [activeMembers, state.projects, confirmedProjectIds, bonusBankBalance]);
 
   // Projected bonuses — visible but NOT payable
   const totalProjectedBonuses = useMemo(() => {
@@ -338,7 +439,7 @@ export function WorkingCapital() {
     });
   }, [txType, txCat, txAmount, txDesc, txDate, txAsset, wcBalance, dispatch, toast, formatCurrency, isCapital]);
 
-  // Pay stipends
+  // Pay stipends (WC) + bonuses (Bonus Bank) — separated sources
   const payStipends = useCallback(() => {
     const stipendEntries = Object.entries(stipendAmounts).filter(([, v]) => parseFloat(v) > 0);
 
@@ -348,18 +449,29 @@ export function WorkingCapital() {
 
     // Calculate project bonuses — CONFIRMED ONLY (projected not payable)
     const currentMonthStr = new Date().toISOString().slice(0, 7);
-    const confirmedMonthProjects = state.projects.filter(p =>
+    const confirmedProjects = state.projects.filter(p =>
       p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
     );
     const memberBonuses: Record<string, number> = {};
     activeMembers.forEach(m => {
       let bonus = 0;
-      confirmedMonthProjects.forEach(p => {
+      confirmedProjects.forEach(p => {
         const dist = p.distribution.find(d => d.memberId === m.id);
         if (dist) bonus += dist.finalBonus;
       });
       if (bonus > 0) memberBonuses[m.id] = Math.round(bonus);
     });
+
+    // Rounding-drift backstop: if total bonus distribution drifts a tiny amount past Bonus Bank
+    // (Math.round on each member can drift the sum by ±N), absorb the diff into the largest share.
+    const memberIds = Object.keys(memberBonuses);
+    const bonusSum = memberIds.reduce((s, id) => s + memberBonuses[id], 0);
+    const drift = bonusSum - bonusBankBalance;
+    if (drift > 0 && drift <= memberIds.length && memberIds.length > 0) {
+      const largestId = memberIds.reduce((max, id) =>
+        memberBonuses[id] > memberBonuses[max] ? id : max, memberIds[0]);
+      memberBonuses[largestId] -= drift;
+    }
 
     // Calculate contribution bank rewards if quarter end
     const memberBankRewards: Record<string, number> = {};
@@ -370,7 +482,7 @@ export function WorkingCapital() {
       });
     }
 
-    // Include bonus-only members (stipend=0 but have confirmed bonus) in payout
+    // Include bonus-only members (stipend=0 but have confirmed bonus)
     const bonusOnlyEntries: [string, string][] = activeMembers
       .filter(m => !stipendEntries.find(([id]) => id === m.id) && (memberBonuses[m.id] || 0) > 0)
       .map(m => [m.id, '0']);
@@ -382,45 +494,69 @@ export function WorkingCapital() {
 
     const totalBonuses = Object.values(memberBonuses).reduce((s, v) => s + v, 0);
     const totalBankRewards = Object.values(memberBankRewards).reduce((s, v) => s + v, 0);
-    const totalRequired = totalPaying + totalBonuses + totalBankRewards;
+    // Stipends + Q-Rewards leave WC physically; Bonuses leave Bonus Bank physically
+    const wcRequired = totalPaying + totalBankRewards;
+    const bbRequired = totalBonuses;
 
-    if (totalRequired > wcBalance) {
-      toast({ title: 'Insufficient WC balance', description: `Need ${formatCurrency(totalRequired)} (stipends + bonuses${totalBankRewards > 0 ? ' + Q-rewards' : ''}), have ${formatCurrency(wcBalance)}`, variant: 'destructive' });
+    if (wcRequired > wcBalance) {
+      toast({ title: 'Insufficient WC balance', description: `Need ${formatCurrency(wcRequired)} for stipends${totalBankRewards > 0 ? ' + Q-rewards' : ''}, have ${formatCurrency(wcBalance)}. Top up or transfer from Company Fund.`, variant: 'destructive' });
       return;
     }
+    if (bbRequired > bonusBankBalance) {
+      toast({ title: 'Insufficient Bonus Bank balance', description: `Need ${formatCurrency(bbRequired)} for bonuses, only ${formatCurrency(bonusBankBalance)} available. Confirm more billing payments to grow the Bonus Bank.`, variant: 'destructive' });
+      return;
+    }
+
     const monthLabel = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     const today = new Date().toISOString().slice(0, 10);
-    let runningBalance = wcBalance;
+    let runningWCBalance = wcBalance;
+    let runningBBBalance = bonusBankBalance;
 
     entries.forEach(([memberId, amtStr], i) => {
       const stipendAmount = parseFloat(amtStr) || 0;
       const bonus = memberBonuses[memberId] || 0;
       const bankReward = memberBankRewards[memberId] || 0;
-      const totalPayout = stipendAmount + bonus + bankReward;
-      if (totalPayout === 0) return;
+      const wcPayout = stipendAmount + bankReward;
       const member = activeMembers.find(m => m.id === memberId);
 
-      // Single combined payroll transaction per member
-      runningBalance -= totalPayout;
-      const breakdown = [
-        stipendAmount > 0 ? `Stipend: ${stipendAmount.toLocaleString()}` : null,
-        bonus > 0 ? `Bonus: ${bonus.toLocaleString()}` : null,
-        bankReward > 0 ? `Q-Reward: ${bankReward.toLocaleString()}` : null,
-      ].filter(Boolean).join(' · ');
-      const txPayroll: WCTransaction = {
-        id: `pay-${memberId}-${Date.now() + i}`,
-        date: today,
-        type: 'outflow',
-        category: 'payroll',
-        amount: totalPayout,
-        description: `${member?.name} — ${monthLabel} (${breakdown})`,
-        reference: memberId,
-        balanceAfter: runningBalance,
-        autoGenerated: true,
-      };
-      dispatch({ type: 'ADD_WC_TRANSACTION', payload: txPayroll });
-      if (stipendAmount > 0) {
-        dispatch({ type: 'PAY_MEMBER_STIPEND', payload: { memberId, amount: stipendAmount, wcTransactionId: txPayroll.id } });
+      // WC outflow: stipend + Q-reward only (bonuses don't touch WC — separate physical account)
+      if (wcPayout > 0) {
+        runningWCBalance -= wcPayout;
+        const breakdown = [
+          stipendAmount > 0 ? `Stipend: ${stipendAmount.toLocaleString()}` : null,
+          bankReward > 0 ? `Q-Reward: ${bankReward.toLocaleString()}` : null,
+        ].filter(Boolean).join(' · ');
+        const txPayroll: WCTransaction = {
+          id: `pay-${memberId}-${Date.now() + i}`,
+          date: today,
+          type: 'outflow',
+          category: 'payroll',
+          amount: wcPayout,
+          description: `${member?.name} — ${monthLabel} (${breakdown})`,
+          reference: memberId,
+          balanceAfter: runningWCBalance,
+          autoGenerated: true,
+        };
+        dispatch({ type: 'ADD_WC_TRANSACTION', payload: txPayroll });
+        if (stipendAmount > 0) {
+          dispatch({ type: 'PAY_MEMBER_STIPEND', payload: { memberId, amount: stipendAmount, wcTransactionId: txPayroll.id } });
+        }
+      }
+
+      // Bonus Bank outflow: bonus only (cash leaves the Bonus Bank physical account)
+      if (bonus > 0) {
+        runningBBBalance -= bonus;
+        dispatch({ type: 'ADD_BONUS_BANK_TRANSACTION', payload: {
+          id: `bonus-pay-${memberId}-${Date.now() + i + 10000}`,
+          date: today,
+          type: 'debit',
+          category: 'bonus_payout',
+          amount: bonus,
+          description: `${member?.name} — ${monthLabel} bonus`,
+          reference: memberId,
+          balanceAfter: runningBBBalance,
+          autoGenerated: true,
+        }});
       }
     });
 
@@ -432,14 +568,14 @@ export function WorkingCapital() {
     toast({
       title: '✓ Payroll complete',
       description: [
-        `${formatCurrency(totalPaying)} stipends`,
-        totalBonuses > 0 ? `${formatCurrency(totalBonuses)} bonuses` : null,
-        totalBankRewards > 0 ? `${formatCurrency(totalBankRewards)} Q-rewards` : null,
+        totalPaying > 0 ? `${formatCurrency(totalPaying)} stipends from WC` : null,
+        totalBonuses > 0 ? `${formatCurrency(totalBonuses)} bonuses from Bonus Bank` : null,
+        totalBankRewards > 0 ? `${formatCurrency(totalBankRewards)} Q-rewards from WC` : null,
         `paid to ${entries.length} members`,
       ].filter(Boolean).join(' + '),
     });
 
-    // Auto-send email receipts to members who have email addresses
+    // Auto-send email receipts
     const monthStr = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     entries.forEach(([memberId, amtStr], i) => {
       const amount = parseFloat(amtStr);
@@ -449,40 +585,42 @@ export function WorkingCapital() {
       const bonus = memberBonuses[memberId] || 0;
       const subject = encodeURIComponent(`${state.settings.companyName} — Earnings Receipt · ${monthStr}`);
       const body = encodeURIComponent(
-        `Hi ${member.name.split(' ')[0]},
-
-` +
-        `Your earnings for ${monthStr} have been processed.
-
-` +
-        `EARNINGS SUMMARY
-` +
-        `───────────────────
-` +
-        `Stipend Paid:    ${state.settings.currencySymbol} ${amount.toLocaleString()}
-` +
-        (bonus > 0 ? `Project Bonus:   ${state.settings.currencySymbol} ${bonus.toLocaleString()}
-` : '') +
-        `───────────────────
-` +
-        `Total:           ${state.settings.currencySymbol} ${(amount + bonus + (memberBankRewards[memberId] || 0)).toLocaleString()}
-
-` +
-        (memberBankRewards[memberId] ? `Q-Bank Reward included: ${state.settings.currencySymbol} ${memberBankRewards[memberId].toLocaleString()}
-` : '') +
+        `Hi ${member.name.split(' ')[0]},\n\nYour earnings for ${monthStr} have been processed.\n\nEARNINGS SUMMARY\n───────────────────\nStipend Paid:    ${state.settings.currencySymbol} ${amount.toLocaleString()}\n` +
+        (bonus > 0 ? `Project Bonus:   ${state.settings.currencySymbol} ${bonus.toLocaleString()}\n` : '') +
+        `───────────────────\nTotal:           ${state.settings.currencySymbol} ${(amount + bonus + (memberBankRewards[memberId] || 0)).toLocaleString()}\n\n` +
+        (memberBankRewards[memberId] ? `Q-Bank Reward included: ${state.settings.currencySymbol} ${memberBankRewards[memberId].toLocaleString()}\n` : '') +
         `InspireX OS · ${state.settings.companyName}`
       );
       setTimeout(() => {
         window.open(`mailto:${member.email}?subject=${subject}&body=${body}`, '_blank');
       }, 600 + i * 400);
     });
-  }, [stipendAmounts, totalPaying, wcBalance, activeMembers, state.projects, state.settings, memberBankRewards, totalBankRewards, isQuarterEnd, dispatch, toast, formatCurrency]);
+  }, [stipendAmounts, totalPaying, wcBalance, bonusBankBalance, activeMembers, state.projects, state.settings, memberBankRewards, totalBankRewards, isQuarterEnd, confirmedProjectIds, dispatch, toast, formatCurrency]);
 
   // Delete transaction
   const deleteTransaction = useCallback((tx: WCTransaction) => {
     setPendingDeleteTx(tx);
     setDeleteReason('');
   }, []);
+
+  // Delete a Bonus Bank transaction (no confirm dialog — uses simple confirm for now)
+  const deleteBbTransaction = useCallback((tx: BonusBankTransaction) => {
+    if (!confirm(`Delete this Bonus Bank entry?\n\n"${tx.description}"\n\nBalance will be recalculated.`)) return;
+    dispatch({ type: 'DELETE_BONUS_BANK_TRANSACTION', payload: tx.id });
+    toast({ title: 'Bonus Bank entry deleted', description: 'Balance recalculated' });
+  }, [dispatch, toast]);
+
+  // Helper: label/color for Bonus Bank categories
+  const bbCatLabel = (c: string) =>
+    c === 'project_allocation' ? '🏦 Bonus Allocation' :
+    c === 'bonus_payout' ? '🏦 Bonus Paid' :
+    c === 'manual_topup' ? '🏦 Top-up' :
+    c === 'transfer_to_wc' ? '🏦 → WC' :
+    c === 'adjustment' ? '🏦 Adjustment' : '🏦 Other';
+  const bbCatColor = (c: string) =>
+    c === 'project_allocation' ? 'text-[#73F764]' :
+    c === 'bonus_payout' ? 'text-blue-400' :
+    'text-muted-foreground';
 
   const confirmDeleteTransaction = useCallback(() => {
     if (!pendingDeleteTx) return;
@@ -568,17 +706,6 @@ export function WorkingCapital() {
         </div>
       )}
 
-      {/* Low balance alert */}
-      {isLowBalance && (
-        <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <span className="text-amber-400 font-medium">Working Capital balance is low — {formatCurrency(wcBalance)}.</span>{' '}
-            Consider transferring from Retained Profit ({formatCurrency(retainedProfit)} available).
-          </div>
-        </div>
-      )}
-
       {/* Empty state */}
       {wcTransactions.length === 0 && (
         <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg text-sm text-muted-foreground">
@@ -588,19 +715,29 @@ export function WorkingCapital() {
       )}
 
       {/* Balance cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className={`bg-card col-span-2 md:col-span-1 border ${isLowBalance ? 'border-amber-500/50' : 'border-primary/30'}`}>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card className="bg-card border border-primary/30">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-1">
-              <Wallet className={`w-4 h-4 ${isLowBalance ? 'text-amber-400' : 'text-primary'}`} />
+              <Wallet className="w-4 h-4 text-primary" />
               <div className="text-xs text-muted-foreground uppercase tracking-wider">WC Balance</div>
             </div>
-            <div className={`text-2xl font-bold ${isLowBalance ? 'text-amber-400' : 'text-primary'}`}>
+            <div className="text-2xl font-bold text-primary">
               {formatCurrency(wcBalance)}
             </div>
             {totalDeferred > 0 && (
-              <div className="text-xs text-red-400 mt-1">Deferred owed: {formatCurrency(totalDeferred)}</div>
+              <div className="text-xs text-red-400 mt-1">Deferred: {formatCurrency(totalDeferred)}</div>
             )}
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-[#73F764]/30">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm">🏦</span>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Bonus Bank</div>
+            </div>
+            <div className="text-2xl font-bold text-[#73F764]">{formatCurrency(bonusBankBalance)}</div>
+            <div className="text-xs text-muted-foreground mt-1">Earmarked from WC for bonuses</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -635,6 +772,67 @@ export function WorkingCapital() {
         </Card>
       </div>
 
+      {/* Stipend Coverage — planning panel */}
+      {(() => {
+        const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
+        if (totalStipends === 0) return null;
+        const burdenPct = wcBalance > 0 ? Math.round((totalStipends / wcBalance) * 100) : 999;
+        const runway = totalStipends > 0 ? Math.floor(wcBalance / totalStipends) : 0;
+        const buffer = wcBalance - totalStipends;
+        const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
+        const red = state.settings.workingCapital?.runwayRedThreshold ?? 3;
+        const tone = wcBalance < totalStipends ? 'red' : runway < red ? 'red' : runway < amber ? 'amber' : 'green';
+        const toneClasses = tone === 'red'
+          ? { border: 'border-destructive/40', text: 'text-destructive', bg: 'bg-destructive/5' }
+          : tone === 'amber'
+          ? { border: 'border-amber-500/40', text: 'text-amber-400', bg: 'bg-amber-500/5' }
+          : { border: 'border-primary/30', text: 'text-primary', bg: 'bg-primary/5' };
+        const runwayLabel = wcBalance < totalStipends
+          ? 'Cannot cover next payroll'
+          : runway === 0 ? '< 1 month'
+          : `${runway} month${runway !== 1 ? 's' : ''}`;
+        return (
+          <Card className={`bg-card ${toneClasses.border} border ${toneClasses.bg}`}>
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className={`w-4 h-4 ${toneClasses.text}`} />
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Stipend Coverage</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <div className={`text-2xl font-bold ${toneClasses.text}`}>{burdenPct}%</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">of WC goes to next payroll</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    {formatCurrency(totalStipends)} stipends ÷ {formatCurrency(wcBalance)} WC
+                  </div>
+                </div>
+                <div>
+                  <div className={`text-2xl font-bold ${toneClasses.text}`}>{runwayLabel}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">stipend runway without inflow</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    Thresholds: ≥{amber}m green · {red}–{amber - 1}m amber · &lt;{red}m red
+                  </div>
+                </div>
+                <div>
+                  <div className={`text-2xl font-bold ${buffer < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                    {formatCurrency(buffer)}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">free for other expenses</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    after next payroll covered
+                  </div>
+                </div>
+              </div>
+              {totalDeferred > 0 && (
+                <div className="text-xs text-amber-400 mt-3 pt-3 border-t border-border/50">
+                  + {formatCurrency(totalDeferred)} deferred owed from previous months — true next payroll: {formatCurrency(totalStipends + totalDeferred)}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Quick actions */}
       <div className="flex gap-3 flex-wrap">
         <Button onClick={openStipendPanel} className="bg-blue-600 hover:bg-blue-500 text-white text-sm">
@@ -658,6 +856,41 @@ export function WorkingCapital() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Stipend Protection banner */}
+            {!thresholdStatus.skipped && (() => {
+              const t = thresholdStatus;
+              const isFull = t.status === 'full';
+              const isBelow = t.status === 'partial_below';
+              const tone = isFull ? { bg: 'bg-primary/5', border: 'border-primary/30', text: 'text-primary', label: '✓ Full payout' }
+                : isBelow ? { bg: 'bg-destructive/5', border: 'border-destructive/30', text: 'text-destructive', label: '⚠ Below partial threshold' }
+                : { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', label: '⚠ Below full threshold' };
+              return (
+                <div className={`mb-3 p-3 ${tone.bg} ${tone.border} border rounded-lg text-xs`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium ${tone.text}`}>{tone.label}</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-foreground">Payout rate: <span className={`font-semibold ${tone.text}`}>{t.rate}%</span></span>
+                    </div>
+                    <span className="text-muted-foreground">
+                      Coverage: <span className={`font-semibold ${tone.text}`}>{t.coverage}%</span>
+                      <span className="text-muted-foreground"> ({formatCurrency(t.revenue)} revenue ÷ {formatCurrency(t.totalStipends)} stipends)</span>
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span>Full ≥ {t.fullMultiplier}% coverage ({formatCurrency(t.fullThresholdAmount)}) → 100%</span>
+                    <span>· Partial ≥ {t.partialMultiplier}% coverage ({formatCurrency(t.partialThresholdAmount)}) → {t.betweenRate}%</span>
+                    <span>· Below → {t.belowRate}%</span>
+                  </div>
+                  {!isFull && (
+                    <div className="text-muted-foreground mt-1 italic">
+                      Pre-filled at {t.rate}% of (stipend + deferred). Override per member if needed; shortfall becomes deferred.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Projected bonus warning */}
             {totalProjectedBonuses > 0 && (
               <div className="mb-3 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-400 flex items-start gap-2">
@@ -757,25 +990,44 @@ export function WorkingCapital() {
             </div>
             {(() => {
                 const totalBankPreview = isQuarterEnd ? totalBankRewards : 0;
-                const grandTotal = totalPaying + totalBonusesPreview + totalBankPreview;
+                const bbPortion = totalBonusesPreview;
+                const wcPortion = totalPaying + totalBankPreview;
+                const wcInsufficient = wcPortion > wcBalance;
+                const bbInsufficient = bbPortion > 0 && bbPortion > bonusBankBalance;
+                const nothingToPay = wcPortion === 0 && bbPortion === 0;
                 return (
                   <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-border">
-                    <div className="text-sm space-y-1">
-                      <div>
-                        <span className="text-muted-foreground">WC Balance: </span>
-                        <span className="text-foreground">{formatCurrency(wcBalance)}</span>
-                        <span className="text-muted-foreground mx-2">→</span>
-                        <span className={(wcBalance - grandTotal) < 0 ? 'text-destructive' : 'text-primary'}>
-                          {formatCurrency(wcBalance - grandTotal)}
-                        </span>
+                    <div className="text-sm space-y-1.5">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div>
+                          <span className="text-muted-foreground">WC: </span>
+                          <span className="text-foreground">{formatCurrency(wcBalance)}</span>
+                          <span className="text-muted-foreground mx-1.5">→</span>
+                          <span className={wcInsufficient ? 'text-destructive' : 'text-primary'}>
+                            {formatCurrency(wcBalance - wcPortion)}
+                          </span>
+                        </div>
+                        {bbPortion > 0 && (
+                          <div>
+                            <span className="text-muted-foreground">Bonus Bank: </span>
+                            <span className="text-foreground">{formatCurrency(bonusBankBalance)}</span>
+                            <span className="text-muted-foreground mx-1.5">→</span>
+                            <span className={bbInsufficient ? 'text-destructive' : 'text-[#73F764]'}>
+                              {formatCurrency(bonusBankBalance - bbPortion)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Stipends: {formatCurrency(totalPaying)}
-                        {totalBonusesPreview > 0 && <span className="text-primary"> + Confirmed bonuses: {formatCurrency(totalBonusesPreview)}</span>}
-                        {totalBankPreview > 0 && <span className="text-amber-400"> + Q-Rewards: {formatCurrency(totalBankPreview)}</span>}
-                        {!isQuarterEnd && totalBankRewards > 0 && <span className="text-muted-foreground text-xs"> (* Q-Rewards paid in Mar/Jun/Sep/Dec)</span>}
-                        <span className="font-medium text-foreground"> = {formatCurrency(grandTotal)}</span>
+                        {wcPortion > 0 && <span>WC pays: {formatCurrency(totalPaying)} stipends{totalBankPreview > 0 ? ` + ${formatCurrency(totalBankPreview)} Q-Rewards` : ''}</span>}
+                        {bbPortion > 0 && <span className="text-[#73F764]">{wcPortion > 0 ? ' · ' : ''}Bonus Bank pays: {formatCurrency(bbPortion)} bonuses</span>}
+                        {!isQuarterEnd && totalBankRewards > 0 && <span className="text-muted-foreground"> (* Q-Rewards paid in Mar/Jun/Sep/Dec)</span>}
                       </div>
+                      {bbPortion > 0 && bbInsufficient && (
+                        <div className="text-xs text-amber-400">
+                          Bonus Bank needs {formatCurrency(bbPortion - bonusBankBalance)} more — confirm more billing payments to auto-fund it.
+                        </div>
+                      )}
                       {totalProjectedBonuses > 0 && (
                         <div className="text-xs text-amber-400">
                           + {formatCurrency(totalProjectedBonuses)} projected bonuses excluded — awaiting client payment
@@ -785,9 +1037,9 @@ export function WorkingCapital() {
                     <div className="flex gap-2">
                       <Button variant="ghost" size="sm" onClick={() => setShowStipendPanel(false)}>Cancel</Button>
                       <Button size="sm" onClick={payStipends}
-                        disabled={grandTotal > wcBalance || totalPaying === 0}
+                        disabled={wcInsufficient || bbInsufficient || nothingToPay}
                         className="bg-blue-600 hover:bg-blue-500 text-white">
-                        Pay {formatCurrency(grandTotal)}
+                        Pay {formatCurrency(wcPortion + bbPortion)}
                       </Button>
                     </div>
                   </div>
@@ -920,7 +1172,7 @@ export function WorkingCapital() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Transaction Ledger ({filteredTxs.length})
+                  Transaction Ledger ({filteredTxs.length + filteredBbTxs.length})
                 </CardTitle>
                 <div className="flex gap-2 flex-wrap">
                   <Select value={filterMonth} onValueChange={setFilterMonth}>
@@ -947,7 +1199,7 @@ export function WorkingCapital() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {filteredTxs.length === 0 ? (
+              {filteredTxs.length === 0 && filteredBbTxs.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <Wallet className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No transactions yet.</p>
@@ -967,6 +1219,97 @@ export function WorkingCapital() {
                     </thead>
                     <tbody>
                       {groupedLedgerRows.map((row) => {
+                        // ── Bonus Bank single transaction ──
+                        if (row.kind === 'bb-tx') {
+                          const tx = row.tx;
+                          return (
+                            <tr key={tx.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/10">
+                              <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">{tx.date}</td>
+                              <td className="py-3 px-3">
+                                <div className="text-sm">{tx.description}</div>
+                                {tx.autoGenerated && (
+                                  <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded mt-0.5 inline-block">auto</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className={`text-xs ${bbCatColor(tx.category)}`}>{bbCatLabel(tx.category)}</span>
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <span className={`text-sm font-semibold ${tx.type === 'credit' ? 'text-[#73F764]' : 'text-red-400'}`}>
+                                  {tx.type === 'credit' ? '+' : '−'}{formatCurrency(tx.amount)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right text-sm text-muted-foreground">
+                                {formatCurrency(tx.balanceAfter)}
+                              </td>
+                              <td className="py-3 px-3 no-print">
+                                <Button variant="ghost" size="sm" onClick={() => deleteBbTransaction(tx)}
+                                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        // ── Bonus Bank monthly payout group (collapsible) ──
+                        if (row.kind === 'bb-payout-group') {
+                          const groupKey = `bb-payout-${row.month}`;
+                          const isExpanded = expandedPayrollGroups.has(groupKey);
+                          const monthLabel = new Date(row.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+                          return (
+                            <>
+                              <tr key={groupKey}
+                                className="border-b border-border/50 hover:bg-secondary/20 cursor-pointer select-none"
+                                onClick={() => setExpandedPayrollGroups(prev => {
+                                  const next = new Set(prev);
+                                  next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
+                                  return next;
+                                })}
+                              >
+                                <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">{row.month}</td>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center gap-2">
+                                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                                    <div>
+                                      <div className="text-sm font-medium">Bonus Payouts — {monthLabel}</div>
+                                      <div className="text-xs text-muted-foreground">{row.txs.length} members · click to {isExpanded ? 'collapse' : 'expand'}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="text-xs text-blue-400">🏦 Bonus Paid</span>
+                                </td>
+                                <td className="py-3 px-3 text-right">
+                                  <span className="text-sm font-semibold text-red-400">−{formatCurrency(row.total)}</span>
+                                </td>
+                                <td className="py-3 px-3 text-right text-sm text-muted-foreground">
+                                  {formatCurrency(row.balanceAfter)}
+                                </td>
+                                <td className="py-3 px-3" />
+                              </tr>
+                              {isExpanded && row.txs.map(tx => (
+                                <tr key={tx.id} className="border-b border-border/30 bg-secondary/10 hover:bg-secondary/20">
+                                  <td className="py-2 px-3 pl-8 text-xs text-muted-foreground whitespace-nowrap">{tx.date}</td>
+                                  <td className="py-2 px-3 pl-8">
+                                    <div className="text-xs text-foreground/80">{tx.description}</div>
+                                    {tx.autoGenerated && <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded mt-0.5 inline-block">auto</span>}
+                                  </td>
+                                  <td className="py-2 px-3" />
+                                  <td className="py-2 px-3 text-right">
+                                    <span className="text-xs font-medium text-red-400">−{formatCurrency(tx.amount)}</span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right text-xs text-muted-foreground">{formatCurrency(tx.balanceAfter)}</td>
+                                  <td className="py-2 px-3 no-print">
+                                    <Button variant="ghost" size="sm" onClick={() => deleteBbTransaction(tx)}
+                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive">
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </>
+                          );
+                        }
                         if (row.kind === 'payroll-group') {
                           const groupKey = `payroll-${row.month}`;
                           const isExpanded = expandedPayrollGroups.has(groupKey);
