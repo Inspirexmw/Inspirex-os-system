@@ -5,7 +5,6 @@ import {
   Wallet,
   PiggyBank,
   Briefcase,
-  Shield,
   Bell,
   Activity,
   Users,
@@ -26,6 +25,7 @@ import {
 import { motion } from 'framer-motion';
 import { StatCard } from '@/components/ui/stat-card';
 import { AnimatedNumber } from '@/components/ui/animated-number';
+import { DeltaPill } from '@/components/ui/delta-pill';
 import { CashFlowChart } from '@/components/ui/cash-flow-chart';
 import { BrandedTooltip } from '@/components/ui/branded-tooltip';
 import { ActivityFeed } from '@/components/ui/activity-feed';
@@ -267,29 +267,46 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
           {/* MAIN COLUMN */}
           <div className="space-y-6 min-w-0">
-            {/* STAT ROW */}
+            {/* STAT ROW — combined Income card (Invoiced + Received) + Bonus Pool + Company Fund */}
             <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              <motion.div variants={fadeUpItem}>
-                <StatCard
-                  title="Invoiced (Month)"
-                  numericValue={metrics.totalRevenue}
-                  format={formatCurrency}
-                  delta={metrics.revenueDelta}
-                  subtitle={`${metrics.clientProjects} project${metrics.clientProjects !== 1 ? 's' : ''} · projected`}
-                  icon={TrendingUp}
-                />
+              {/* Combined Income card (spans 2 cols on xl+) */}
+              <motion.div variants={fadeUpItem} className="sm:col-span-2 xl:col-span-2">
+                <Card className="bg-card border-border h-full">
+                  <CardContent className="p-0">
+                    <div className="grid grid-cols-2 divide-x divide-border/40 h-full">
+                      {/* Invoiced */}
+                      <div className="p-6">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Invoiced (Month)</span>
+                          <div className="w-7 h-7 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center"><TrendingUp className="w-3.5 h-3.5" /></div>
+                        </div>
+                        <div className="text-2xl xl:text-3xl font-semibold tracking-tight tabular whitespace-nowrap text-foreground">
+                          <AnimatedNumber value={metrics.totalRevenue} format={formatCurrency} />
+                        </div>
+                        <div className="mt-2"><DeltaPill value={metrics.revenueDelta} label="vs last month" /></div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+                          {metrics.clientProjects} project{metrics.clientProjects !== 1 ? 's' : ''} · projected
+                        </p>
+                      </div>
+                      {/* Received */}
+                      <div className="p-6 relative">
+                        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</span>
+                          <div className="w-7 h-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center"><Wallet className="w-3.5 h-3.5" /></div>
+                        </div>
+                        <div className="text-2xl xl:text-3xl font-semibold tracking-tight tabular whitespace-nowrap text-primary">
+                          <AnimatedNumber value={metrics.totalReceivedThisMonth} format={formatCurrency} />
+                        </div>
+                        <div className="mt-2"><DeltaPill value={metrics.receivedDelta} label="vs last month" /></div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">Cash received via Billing</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </motion.div>
-              <motion.div variants={fadeUpItem}>
-                <StatCard
-                  title="Received (Month)"
-                  numericValue={metrics.totalReceivedThisMonth}
-                  format={formatCurrency}
-                  delta={metrics.receivedDelta}
-                  subtitle="Cash received via Billing"
-                  icon={Wallet}
-                  accent
-                />
-              </motion.div>
+
+              {/* Bonus Pool */}
               <motion.div variants={fadeUpItem}>
                 <StatCard
                   title="Bonus Pool"
@@ -300,6 +317,8 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                   icon={Award}
                 />
               </motion.div>
+
+              {/* Company Fund */}
               <motion.div variants={fadeUpItem}>
                 <StatCard
                   title="Company Fund"
@@ -312,65 +331,39 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               </motion.div>
             </motion.div>
 
-            {/* OPERATIONS PULSE — compact strip, not 4 separate cards */}
+            {/* OPERATIONS PULSE — compact strip (Stipend Runway lives on WC page) */}
             {(() => {
               const wc = state.wcBalance || 0;
-              const runway = metrics.totalStipends > 0 ? Math.floor(wc / metrics.totalStipends) : 0;
-              const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
-              const red = state.settings.workingCapital?.runwayRedThreshold ?? 3;
-              const burdenPct = wc > 0 && metrics.totalStipends > 0 ? Math.round((metrics.totalStipends / wc) * 100) : 0;
-              const runwayLabel = metrics.totalStipends === 0 ? 'No stipends'
-                : wc < metrics.totalStipends ? '< 1 mo'
-                : `${runway} mo`;
-              const runwayTone: 'lime' | 'amber' | 'red' = runway >= amber ? 'lime' : runway >= red ? 'amber' : 'red';
-              const runwayProgressColor = runwayTone === 'lime' ? 'hsl(var(--primary))' : runwayTone === 'amber' ? '#fbbf24' : '#ef4444';
-              const runwayProgress = metrics.totalStipends === 0 ? 100 : Math.min(100, (runway / Math.max(amber, 1)) * 100);
-
-              return (
-                <OperationsPulse
-                  formatCurrency={formatCurrency}
-                  stats={[
-                    {
-                      key: 'wc',
-                      label: 'Working Capital',
-                      value: wc,
-                      icon: Wallet,
-                      tone: 'lime',
-                      hint: 'Operations account',
-                      onClick: () => onViewChange?.('capital'),
-                    },
-                    {
-                      key: 'runway',
-                      label: 'Stipend Runway',
-                      // Render the textual runway label using the format hook trick
-                      value: runway,
-                      format: () => runwayLabel,
-                      icon: Shield,
-                      tone: runwayTone,
-                      hint: metrics.totalStipends === 0 ? 'No stipends configured' : `${burdenPct}% of WC for next payroll`,
-                      progress: runwayProgress,
-                      progressColor: runwayProgressColor,
-                      onClick: () => onViewChange?.('capital'),
-                    },
-                    {
-                      key: 'retained',
-                      label: 'Retained Profit',
-                      value: metrics.retainedProfit,
-                      icon: PiggyBank,
-                      tone: 'purple',
-                      hint: 'Accumulated earnings',
-                    },
-                    {
-                      key: 'deferred',
-                      label: 'Deferred to Team',
-                      value: metrics.totalDeferred,
-                      icon: Users,
-                      tone: metrics.totalDeferred > 0 ? 'red' : 'neutral',
-                      hint: metrics.totalDeferred > 0 ? 'Owed — pay when WC allows' : 'No deferred ✓',
-                    },
-                  ]}
-                />
-              );
+              const stats: Parameters<typeof OperationsPulse>[0]['stats'] = [
+                {
+                  key: 'wc',
+                  label: 'Working Capital',
+                  value: wc,
+                  icon: Wallet,
+                  tone: 'lime',
+                  hint: 'Operations account',
+                  onClick: () => onViewChange?.('capital'),
+                },
+                {
+                  key: 'retained',
+                  label: 'Retained Profit',
+                  value: metrics.retainedProfit,
+                  icon: PiggyBank,
+                  tone: 'purple',
+                  hint: 'Accumulated earnings',
+                },
+              ];
+              if (metrics.totalDeferred > 0) {
+                stats.push({
+                  key: 'deferred',
+                  label: 'Deferred to Team',
+                  value: metrics.totalDeferred,
+                  icon: Users,
+                  tone: 'red',
+                  hint: 'Owed — pay when WC allows',
+                });
+              }
+              return <OperationsPulse formatCurrency={formatCurrency} stats={stats} />;
             })()}
 
             {/* CHARTS ROW: Cash Flow + Work Type Donut */}

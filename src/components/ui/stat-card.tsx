@@ -48,7 +48,7 @@ export function StatCard({
               <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
                 {title}
               </p>
-              <p className={`text-3xl font-semibold leading-none mt-3 tracking-tight tabular ${accent ? 'text-primary' : 'text-foreground'}`}>
+              <p className={`text-3xl font-semibold leading-none mt-3 tracking-tight tabular whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
                 {numericValue !== undefined ? (
                   <AnimatedNumber value={numericValue} format={format} />
                 ) : value}

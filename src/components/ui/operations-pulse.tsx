@@ -42,7 +42,10 @@ export function OperationsPulse({ stats, formatCurrency, className = '' }: Opera
       transition={{ duration: 0.32, ease: [0.25, 0.1, 0.25, 1] }}
       className={`bg-card rounded-2xl overflow-hidden ${className}`}
     >
-      <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border/30">
+      <div
+        className="grid divide-x divide-y sm:divide-y-0 divide-border/30"
+        style={{ gridTemplateColumns: `repeat(${Math.min(stats.length, 4)}, minmax(0, 1fr))` }}
+      >
         {stats.map(s => {
           const Icon = s.icon;
           const tone = TONES[s.tone || 'neutral'];
