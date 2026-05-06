@@ -31,6 +31,7 @@ import { BrandedTooltip } from '@/components/ui/branded-tooltip';
 import { ActivityFeed } from '@/components/ui/activity-feed';
 import { TeamRailItem } from '@/components/ui/team-rail';
 import { NextStepsCard } from '@/components/ui/next-steps-card';
+import { OperationsPulse } from '@/components/ui/operations-pulse';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-pill';
 import { buildActivityFeed, buildCashFlowSeries } from '@/lib/activity-builder';
 
@@ -196,7 +197,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
         const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
         const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         return (
-          <div className="relative overflow-hidden rounded-2xl px-7 py-7 border border-border/50 bg-gradient-to-br from-primary/[0.07] via-card to-card">
+          <div className="relative overflow-hidden rounded-2xl px-7 py-7 bg-gradient-to-br from-primary/[0.07] via-card to-card">
             <div className="absolute -top-10 -right-10 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
             <div className="relative flex items-start justify-between flex-wrap gap-6">
               <div>
@@ -205,12 +206,12 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                 </h1>
                 <p className="text-muted-foreground text-sm mt-2">{dateStr}</p>
               </div>
-              <div className="flex gap-1 bg-secondary/40 p-1 rounded-xl border border-border/50">
+              <div className="flex gap-1 bg-secondary/40 p-1 rounded-xl">
                 {(['operations', 'billing'] as const).map(tab => (
                   <button key={tab} onClick={() => setDashTab(tab)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
                       dashTab === tab
-                        ? 'bg-card text-foreground shadow-sm border border-border/50'
+                        ? 'bg-card text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}>
                     {tab === 'operations' ? '⚙ Operations' : '💼 Billing'}
@@ -311,58 +312,66 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               </motion.div>
             </motion.div>
 
-            {/* SECONDARY ROW */}
-            <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              <motion.div variants={fadeUpItem}>
-                <StatCard
-                  title="Working Capital"
-                  numericValue={state.wcBalance || 0}
-                  format={formatCurrency}
-                  subtitle="Operations account"
-                  icon={Wallet}
-                  onClick={() => onViewChange?.('capital')}
+            {/* OPERATIONS PULSE — compact strip, not 4 separate cards */}
+            {(() => {
+              const wc = state.wcBalance || 0;
+              const runway = metrics.totalStipends > 0 ? Math.floor(wc / metrics.totalStipends) : 0;
+              const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
+              const red = state.settings.workingCapital?.runwayRedThreshold ?? 3;
+              const burdenPct = wc > 0 && metrics.totalStipends > 0 ? Math.round((metrics.totalStipends / wc) * 100) : 0;
+              const runwayLabel = metrics.totalStipends === 0 ? 'No stipends'
+                : wc < metrics.totalStipends ? '< 1 mo'
+                : `${runway} mo`;
+              const runwayTone: 'lime' | 'amber' | 'red' = runway >= amber ? 'lime' : runway >= red ? 'amber' : 'red';
+              const runwayProgressColor = runwayTone === 'lime' ? 'hsl(var(--primary))' : runwayTone === 'amber' ? '#fbbf24' : '#ef4444';
+              const runwayProgress = metrics.totalStipends === 0 ? 100 : Math.min(100, (runway / Math.max(amber, 1)) * 100);
+
+              return (
+                <OperationsPulse
+                  formatCurrency={formatCurrency}
+                  stats={[
+                    {
+                      key: 'wc',
+                      label: 'Working Capital',
+                      value: wc,
+                      icon: Wallet,
+                      tone: 'lime',
+                      hint: 'Operations account',
+                      onClick: () => onViewChange?.('capital'),
+                    },
+                    {
+                      key: 'runway',
+                      label: 'Stipend Runway',
+                      // Render the textual runway label using the format hook trick
+                      value: runway,
+                      format: () => runwayLabel,
+                      icon: Shield,
+                      tone: runwayTone,
+                      hint: metrics.totalStipends === 0 ? 'No stipends configured' : `${burdenPct}% of WC for next payroll`,
+                      progress: runwayProgress,
+                      progressColor: runwayProgressColor,
+                      onClick: () => onViewChange?.('capital'),
+                    },
+                    {
+                      key: 'retained',
+                      label: 'Retained Profit',
+                      value: metrics.retainedProfit,
+                      icon: PiggyBank,
+                      tone: 'purple',
+                      hint: 'Accumulated earnings',
+                    },
+                    {
+                      key: 'deferred',
+                      label: 'Deferred to Team',
+                      value: metrics.totalDeferred,
+                      icon: Users,
+                      tone: metrics.totalDeferred > 0 ? 'red' : 'neutral',
+                      hint: metrics.totalDeferred > 0 ? 'Owed — pay when WC allows' : 'No deferred ✓',
+                    },
+                  ]}
                 />
-              </motion.div>
-              <motion.div variants={fadeUpItem}>
-                {(() => {
-                  const wc = state.wcBalance || 0;
-                  const runway = metrics.totalStipends > 0 ? Math.floor(wc / metrics.totalStipends) : 0;
-                  const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
-                  const burdenPct = wc > 0 && metrics.totalStipends > 0 ? Math.round((metrics.totalStipends / wc) * 100) : 0;
-                  const label = metrics.totalStipends === 0 ? 'No stipends'
-                    : wc < metrics.totalStipends ? '< 1 month'
-                    : `${runway} month${runway !== 1 ? 's' : ''}`;
-                  return (
-                    <StatCard
-                      title="Stipend Runway"
-                      value={label}
-                      subtitle={metrics.totalStipends === 0 ? 'No stipends configured' : `${burdenPct}% of WC · click to plan`}
-                      icon={Shield}
-                      accent={runway >= amber && metrics.totalStipends > 0}
-                      onClick={() => onViewChange?.('capital')}
-                    />
-                  );
-                })()}
-              </motion.div>
-              <motion.div variants={fadeUpItem}>
-                <StatCard
-                  title="Retained Profit"
-                  numericValue={metrics.retainedProfit}
-                  format={formatCurrency}
-                  subtitle="Accumulated earnings"
-                  icon={PiggyBank}
-                />
-              </motion.div>
-              <motion.div variants={fadeUpItem}>
-                <StatCard
-                  title="Deferred to Team"
-                  numericValue={metrics.totalDeferred}
-                  format={formatCurrency}
-                  subtitle={metrics.totalDeferred > 0 ? 'Owed — pay when WC allows' : 'No deferred ✓'}
-                  icon={Users}
-                />
-              </motion.div>
-            </motion.div>
+              );
+            })()}
 
             {/* CHARTS ROW: Cash Flow + Work Type Donut */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

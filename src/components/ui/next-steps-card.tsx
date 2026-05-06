@@ -46,7 +46,7 @@ export function NextStepsCard({ steps, title = 'Next steps', subtitle, emptyCont
                   key={s.id}
                   whileHover={s.onClick ? { x: 3 } : undefined}
                   onClick={s.onClick}
-                  className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg bg-card/60 border border-border/50 hover:border-primary/30 transition-all ${
+                  className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg bg-card/60 hover:bg-card/90 transition-all ${
                     s.onClick ? 'cursor-pointer' : ''
                   }`}
                 >
