@@ -270,23 +270,23 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               {/* Income — Received (primary) + Invoiced (secondary) */}
               <motion.div variants={fadeUpItem}>
                 <Card className="bg-card border-border h-full">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</p>
-                        <p className="text-3xl font-semibold leading-none mt-3 tracking-tight tabular whitespace-nowrap text-primary">
-                          <AnimatedNumber value={metrics.totalReceivedThisMonth} format={formatCurrency} />
-                        </p>
-                        <div className="mt-2"><DeltaPill value={metrics.receivedDelta} label="vs last month" /></div>
-                      </div>
-                      <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
-                        <Wallet className="w-4 h-4" />
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</p>
+                      <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+                        <Wallet className="w-3.5 h-3.5" />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between mt-5">
-                      <span className="text-[11px] text-muted-foreground">Invoiced (projected)</span>
+                    <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
+                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap text-primary">
+                        <AnimatedNumber value={metrics.totalReceivedThisMonth} format={formatCurrency} />
+                      </p>
+                      <DeltaPill value={metrics.receivedDelta} size="xs" />
+                    </div>
+                    <div className="flex items-center justify-between mt-3 text-[11px]">
+                      <span className="text-muted-foreground">Invoiced</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalRevenue)}</span>
+                        <span className="font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalRevenue)}</span>
                         <DeltaPill value={metrics.revenueDelta} size="xs" />
                       </div>
                     </div>
@@ -297,25 +297,25 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               {/* Profit — Company Fund (primary) + Bonus Pool (secondary) */}
               <motion.div variants={fadeUpItem}>
                 <Card className="bg-card border-border h-full">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">Company Fund</p>
-                        <p className="text-3xl font-semibold leading-none mt-3 tracking-tight tabular whitespace-nowrap text-foreground">
-                          <AnimatedNumber value={metrics.totalCompanyContribution} format={formatCurrency} />
-                        </p>
-                        <div className="mt-2"><DeltaPill value={metrics.companyDelta} label="vs last month" /></div>
-                      </div>
-                      <div className="w-10 h-10 rounded-xl bg-secondary text-muted-foreground flex items-center justify-center flex-shrink-0">
-                        <Briefcase className="w-4 h-4" />
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Company Fund</p>
+                      <div className="w-8 h-8 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center flex-shrink-0">
+                        <Briefcase className="w-3.5 h-3.5" />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between mt-5">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                    <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
+                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap text-foreground">
+                        <AnimatedNumber value={metrics.totalCompanyContribution} format={formatCurrency} />
+                      </p>
+                      <DeltaPill value={metrics.companyDelta} size="xs" />
+                    </div>
+                    <div className="flex items-center justify-between mt-3 text-[11px]">
+                      <span className="text-muted-foreground flex items-center gap-1.5">
                         <Award className="w-3 h-3" /> Bonus Pool
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalBonusPool)}</span>
+                        <span className="font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalBonusPool)}</span>
                         <DeltaPill value={metrics.bonusPoolDelta} size="xs" />
                       </div>
                     </div>

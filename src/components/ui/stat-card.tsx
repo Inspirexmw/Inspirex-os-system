@@ -42,35 +42,40 @@ export function StatCard({
         onClick={onClick}
       >
         {accent && <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />}
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                {title}
-              </p>
-              <p className={`text-3xl font-semibold leading-none mt-3 tracking-tight tabular whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
-                {numericValue !== undefined ? (
-                  <AnimatedNumber value={numericValue} format={format} />
-                ) : value}
-              </p>
-              {delta !== undefined && (
-                <div className="mt-3">
-                  <DeltaPill value={delta ?? null} label={deltaLabel ?? 'vs last month'} invert={deltaInvert} />
-                </div>
-              )}
-              {subtitle && (
-                <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{subtitle}</p>
-              )}
-              {footer && <div className="mt-3">{footer}</div>}
-            </div>
+        <CardContent className="p-5">
+          {/* Title row — label + icon */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">
+              {title}
+            </p>
             {Icon && (
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                accent ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                accent ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
               }`}>
-                <Icon className="w-4 h-4" />
+                <Icon className="w-3.5 h-3.5" />
               </div>
             )}
           </div>
+
+          {/* Value + delta on the same line */}
+          <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
+            <p className={`text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
+              {numericValue !== undefined ? (
+                <AnimatedNumber value={numericValue} format={format} />
+              ) : value}
+            </p>
+            {delta !== undefined && (
+              <DeltaPill value={delta ?? null} invert={deltaInvert} size="xs" />
+            )}
+          </div>
+
+          {/* Subtitle and footer below */}
+          {subtitle && (
+            <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+              {deltaLabel === undefined && delta !== undefined ? `${subtitle} · vs last month` : subtitle}
+            </p>
+          )}
+          {footer && <div className="mt-2">{footer}</div>}
         </CardContent>
       </Card>
     </motion.div>
