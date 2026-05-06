@@ -9,12 +9,9 @@ interface DeltaPillProps {
 }
 
 export function DeltaPill({ value, label, invert = false, size = 'sm', className = '' }: DeltaPillProps) {
+  // Hide entirely when there's no comparison data — keeps cards clean
   if (value === null || !isFinite(value)) {
-    return (
-      <span className={`inline-flex items-center gap-1 ${size === 'xs' ? 'text-[10px]' : 'text-[11px]'} text-muted-foreground ${className}`}>
-        <Minus className={size === 'xs' ? 'w-2.5 h-2.5' : 'w-3 h-3'} /> no data
-      </span>
-    );
+    return null;
   }
 
   const rounded = Math.round(value * 10) / 10;

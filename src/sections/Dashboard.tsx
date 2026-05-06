@@ -283,10 +283,10 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                       </p>
                       <DeltaPill value={metrics.receivedDelta} size="xs" />
                     </div>
-                    <div className="flex items-center justify-between mt-3 text-[11px]">
-                      <span className="text-muted-foreground">Invoiced</span>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/30">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Invoiced</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalRevenue)}</span>
+                        <span className="text-base font-semibold tabular text-foreground whitespace-nowrap">{formatCurrency(metrics.totalRevenue)}</span>
                         <DeltaPill value={metrics.revenueDelta} size="xs" />
                       </div>
                     </div>
@@ -310,12 +310,12 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                       </p>
                       <DeltaPill value={metrics.companyDelta} size="xs" />
                     </div>
-                    <div className="flex items-center justify-between mt-3 text-[11px]">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/30">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                         <Award className="w-3 h-3" /> Bonus Pool
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalBonusPool)}</span>
+                        <span className="text-base font-semibold tabular text-foreground whitespace-nowrap">{formatCurrency(metrics.totalBonusPool)}</span>
                         <DeltaPill value={metrics.bonusPoolDelta} size="xs" />
                       </div>
                     </div>
