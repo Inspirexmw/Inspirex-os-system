@@ -1,32 +1,38 @@
 import { useMemo, useState } from 'react';
-import { 
-  TrendingUp, 
-  Clock, 
+import {
+  TrendingUp,
   Award,
-  ArrowUpRight,
-  ArrowDownRight,
-  AlertTriangle,
   Wallet,
   PiggyBank,
   Briefcase,
-  Shield
+  Shield,
+  Bell,
+  Activity,
+  Users,
+  ArrowRight,
+  Receipt,
+  Calculator,
+  ListChecks,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApp } from '@/hooks/useAppState';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
+import {
   PieChart,
   Pie,
-  Cell
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
 } from 'recharts';
-import type { TrendData } from '@/types';
 import { motion } from 'framer-motion';
+import { StatCard } from '@/components/ui/stat-card';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import { CashFlowChart } from '@/components/ui/cash-flow-chart';
+import { BrandedTooltip } from '@/components/ui/branded-tooltip';
+import { ActivityFeed } from '@/components/ui/activity-feed';
+import { TeamRailItem } from '@/components/ui/team-rail';
+import { NextStepsCard } from '@/components/ui/next-steps-card';
+import { StatusBadge, type StatusTone } from '@/components/ui/status-pill';
+import { buildActivityFeed, buildCashFlowSeries } from '@/lib/activity-builder';
 
 const fadeUpItem = {
   hidden: { opacity: 0, y: 14 },
@@ -34,242 +40,132 @@ const fadeUpItem = {
 };
 const staggerGrid = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.07 } },
+  show: { transition: { staggerChildren: 0.06 } },
 };
 
 export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/types').ViewType) => void }) {
-  const { state, dispatch, formatCurrency, getActiveMembers, getCommitmentData } = useApp();
+  const { state, dispatch, formatCurrency, getActiveMembers } = useApp();
   const [dashTab, setDashTab] = useState<'operations' | 'billing'>('operations');
-  
+
   const activeMembers = getActiveMembers();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  
-  // Calculate metrics
+
+  // ── METRICS ──────────────────────────────────────────────────────────
   const metrics = useMemo(() => {
-    // ── Revenue from Billing (source of truth) ──
-    // Invoiced = total invoice amounts for projects this month (projected)
-    // Received = actual payments received in Billing this month (confirmed)
     const billingInvoices = (state.billing?.documents || []).filter((d: any) => d.type === 'invoice');
-    const totalReceivedThisMonth = billingInvoices
-      .reduce((sum: number, inv: any) =>
-        sum + inv.payments
-          .filter((p: any) => p.date?.startsWith(currentMonth))
-          .reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0), 0);
+    const totalReceivedThisMonth = billingInvoices.reduce((sum: number, inv: any) =>
+      sum + inv.payments.filter((p: any) => p.date?.startsWith(currentMonth))
+                       .reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0), 0);
 
-    // Outstanding = unpaid invoice balances across all time (in MWK equivalent)
-    const totalOutstandingFromBilling = billingInvoices
-      .filter((inv: any) => inv.status !== 'paid')
-      .reduce((sum: number, inv: any) => {
-        const paid = inv.payments.reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0);
-        return sum + Math.max(0, inv.total * (inv.exchangeRate || 1) - paid);
-      }, 0);
-
-    // Project-level metrics still from Calculator (projected figures)
-    const totalRevenue = state.projects
-      .filter(p => p.type === 'client' && p.month === currentMonth)
+    const totalRevenue = state.projects.filter(p => p.type === 'client' && p.month === currentMonth)
       .reduce((sum, p) => sum + p.revenue, 0);
-    const totalNetProfit = state.projects
-      .filter(p => p.type === 'client' && p.month === currentMonth)
-      .reduce((sum, p) => sum + p.netProfit, 0);
-    const totalBonusPool = state.projects
-      .filter(p => p.month === currentMonth)
+    const totalBonusPool = state.projects.filter(p => p.month === currentMonth)
       .reduce((sum, p) => sum + p.bonusPool, 0);
-    const totalCompanyContribution = state.projects
-      .filter(p => p.month === currentMonth)
+    const totalCompanyContribution = state.projects.filter(p => p.month === currentMonth)
       .reduce((sum, p) => sum + p.companyContribution, 0);
 
-    const totalPoints = state.workLog
-      .filter(e => e.date.startsWith(currentMonth))
-      .reduce((sum, e) => sum + e.totalPoints, 0);
-    
+    // ── Month-over-month deltas ──
+    const prev = new Date();
+    prev.setDate(1);
+    prev.setMonth(prev.getMonth() - 1);
+    const prevMonth = prev.toISOString().slice(0, 7);
+    const prevRevenue = state.projects.filter(p => p.type === 'client' && p.month === prevMonth).reduce((s, p) => s + p.revenue, 0);
+    const prevReceived = billingInvoices.reduce((sum: number, inv: any) =>
+      sum + inv.payments.filter((p: any) => p.date?.startsWith(prevMonth)).reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0), 0);
+    const prevBonusPool = state.projects.filter(p => p.month === prevMonth).reduce((s, p) => s + p.bonusPool, 0);
+    const prevCompanyContribution = state.projects.filter(p => p.month === prevMonth).reduce((s, p) => s + p.companyContribution, 0);
+    const pctDelta = (curr: number, p: number): number | null => {
+      if (p === 0) return curr === 0 ? 0 : null;
+      return ((curr - p) / p) * 100;
+    };
+
     const clientProjects = state.projects.filter(p => p.type === 'client' && p.month === currentMonth).length;
-    // Retained profit
-    // retainedProfit — single source of truth, driven by Billing payments only
+    const internalProjects = state.projects.filter(p => p.type === 'internal' && p.month === currentMonth).length;
+    const impressionProjects = state.projects.filter(p => p.type === 'impression' && p.month === currentMonth).length;
     const retainedProfit = state.retainedProfit || 0;
-
-    // Total deferred
     const totalDeferred = activeMembers.reduce((s, m) => s + (m.deferredStipendBalance || 0), 0);
+    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
 
-    // ── Month-end auto-transfer prompt ──
+    // Auto-transfer prompt
     const today = new Date();
-    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const daysUntilMonthEnd = lastDayOfMonth - today.getDate();
-    const isMonthEndWindow = daysUntilMonthEnd <= 2; // within last 3 days (0,1,2 days remaining)
-    const autoTransferEnabled = state.settings.workingCapital?.autoTransferEnabled ?? false;
-    const autoTransferPercent = state.settings.workingCapital?.autoTransferPercent ?? 0;
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysToMonthEnd = lastDay - today.getDate();
+    const isMonthEnd = daysToMonthEnd <= 2;
+    const autoEnabled = state.settings.workingCapital?.autoTransferEnabled ?? false;
+    const autoPct = state.settings.workingCapital?.autoTransferPercent ?? 0;
     const lastHandled = state.lastAutoTransferMonth || '';
-    const autoTransferPending = (
-      isMonthEndWindow &&
-      autoTransferEnabled &&
-      autoTransferPercent > 0 &&
-      lastHandled !== currentMonth
-    );
-    // Calculate suggested transfer: X% of this month's confirmed company contributions
-    const confirmedMonthProjects = state.projects.filter(p =>
-      p.month === currentMonth && p.type === 'client' && p.paymentStatus === 'confirmed'
-    );
-    const monthCompanyFund = confirmedMonthProjects.reduce((s, p) => s + p.companyContribution, 0);
-    const suggestedTransfer = Math.round(monthCompanyFund * autoTransferPercent / 100);
+    const autoTransferPending = isMonthEnd && autoEnabled && autoPct > 0 && lastHandled !== currentMonth;
+    const confirmedThisMonth = state.projects.filter(p => p.month === currentMonth && p.type === 'client' && p.paymentStatus === 'confirmed');
+    const monthCompanyFund = confirmedThisMonth.reduce((s, p) => s + p.companyContribution, 0);
+    const suggestedTransfer = Math.round(monthCompanyFund * autoPct / 100);
 
-    // Confirmed projects with unpaid bonuses
-    // A project is "bonus unpaid" if paymentStatus=confirmed but no WC payroll tx covers its period
-    const confirmedUnpaidProjects = state.projects.filter(p =>
-      p.type === 'client' &&
-      p.paymentStatus === 'confirmed' &&
-      p.bonusPool > 0
-    );
+    // Confirmed unpaid bonuses
+    const confirmedUnpaidProjects = state.projects.filter(p => p.type === 'client' && p.paymentStatus === 'confirmed' && p.bonusPool > 0);
     const confirmedUnpaidBonuses = confirmedUnpaidProjects.reduce((s, p) => s + p.bonusPool, 0);
 
-    const totalOutstanding = totalOutstandingFromBilling;
-    const internalProjects = state.projects.filter(p => p.type === 'internal' && p.month === currentMonth).length;
-    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
-    const impressionProjects = state.projects.filter(p => p.type === 'impression' && p.month === currentMonth).length;
-    
     return {
-      totalRevenue,
-      totalNetProfit,
-      totalBonusPool,
-      totalCompanyContribution,
-      totalStipends,
-      totalOutstanding,
-      totalReceivedThisMonth,
-      retainedProfit,
-      totalDeferred,
-      totalPoints,
-      clientProjects,
-      internalProjects,
-      impressionProjects,
-      confirmedUnpaidBonuses,
-      confirmedUnpaidProjects,
-      autoTransferPending,
-      suggestedTransfer,
-      autoTransferPercent,
+      totalRevenue, totalReceivedThisMonth, totalBonusPool, totalCompanyContribution,
+      revenueDelta: pctDelta(totalRevenue, prevRevenue),
+      receivedDelta: pctDelta(totalReceivedThisMonth, prevReceived),
+      bonusPoolDelta: pctDelta(totalBonusPool, prevBonusPool),
+      companyDelta: pctDelta(totalCompanyContribution, prevCompanyContribution),
+      retainedProfit, totalDeferred, totalStipends,
+      clientProjects, internalProjects, impressionProjects,
+      autoTransferPending, suggestedTransfer, autoTransferPercent: autoPct,
+      confirmedUnpaidBonuses, confirmedUnpaidProjects,
     };
-  }, [state.projects, state.workLog, activeMembers, currentMonth]);
+  }, [state.projects, state.workLog, state.billing, state.retainedProfit, state.lastAutoTransferMonth, state.settings.workingCapital, activeMembers, currentMonth]);
 
-  // Working Capital health — based on stipend runway
-  const wcHealth = useMemo(() => {
-    const balance = state.wcBalance || 0;
-    const hasTransactions = state.wcTransactions && state.wcTransactions.length > 0;
-    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
-    const runwayRed = state.settings.workingCapital?.runwayRedThreshold ?? 3;
-    const runwayAmber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
-
-    if (balance === 0 && !hasTransactions) {
-      return { status: 'setup', color: 'text-muted-foreground', bg: 'bg-secondary/50', border: 'border-border', icon: <Wallet className="w-5 h-5" />, message: 'Working Capital not set up yet — add your first top-up in the Working Capital Bank' };
-    }
-    if (totalStipends === 0) {
-      return { status: 'healthy', color: 'text-primary', bg: 'bg-primary/20', border: 'border-primary/30', icon: <Wallet className="w-5 h-5" />, message: `Working Capital — ${formatCurrency(balance)} available` };
-    }
-    const runway = Math.floor(balance / totalStipends);
-    if (balance < totalStipends || runway < runwayRed) {
-      return { status: 'alert', color: 'text-destructive', bg: 'bg-destructive/20', border: 'border-destructive/30', icon: <AlertTriangle className="w-5 h-5" />, message: `Stipend runway critical — ${formatCurrency(balance)} covers ${runway < 1 ? 'less than 1' : runway} month${runway !== 1 ? 's' : ''}. Top up WC or transfer from Company Fund.` };
-    }
-    if (runway < runwayAmber) {
-      return { status: 'warn', color: 'text-amber-400', bg: 'bg-amber-500/15', border: 'border-amber-500/30', icon: <AlertTriangle className="w-5 h-5" />, message: `Stipend runway tight — ${formatCurrency(balance)} covers ${runway} months.` };
-    }
-    return { status: 'healthy', color: 'text-primary', bg: 'bg-primary/20', border: 'border-primary/30', icon: <Wallet className="w-5 h-5" />, message: `Working Capital healthy — ${formatCurrency(balance)} (${runway} months stipend runway)` };
-  }, [state.wcBalance, state.wcTransactions, state.settings.workingCapital, activeMembers, formatCurrency]);
-
-  // Monthly trend data
-  const trendData: TrendData[] = useMemo(() => {
-    const months = Array.from(new Set(state.projects.map(p => p.month))).sort().slice(-6);
-    return months.map(month => {
-      const monthProjects = state.projects.filter(p => p.month === month && p.type === 'client');
-      return {
-        month: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
-        netProfit: monthProjects.reduce((sum, p) => sum + p.netProfit, 0),
-        bonusPool: state.projects.filter(p => p.month === month).reduce((sum, p) => sum + p.bonusPool, 0),
-        companyFund: state.projects.filter(p => p.month === month).reduce((sum, p) => sum + p.companyContribution, 0),
-      };
-    });
-  }, [state.projects]);
-
-  // Work type distribution
+  // ── WORK TYPE PIE ──────────────────────────────────────────────────
   const workTypeData = useMemo(() => [
     { name: 'Client', value: state.workLog.filter(e => e.type === 'client').reduce((s, e) => s + e.totalPoints, 0), color: '#73F764' },
     { name: 'Internal', value: state.workLog.filter(e => e.type === 'internal').reduce((s, e) => s + e.totalPoints, 0), color: '#4a9edd' },
     { name: 'Impression', value: state.workLog.filter(e => e.type === 'impression').reduce((s, e) => s + e.totalPoints, 0), color: '#e0a840' },
   ].filter(d => d.value > 0), [state.workLog]);
 
-  // Top performers by commitment score
-  const topPerformers = useMemo(() => {
-    return activeMembers
-      .map(m => ({ 
-        ...m, 
-        commitment: getCommitmentData(m.id)
-      }))
-      .sort((a, b) => b.commitment.contributionBankPoints - a.commitment.contributionBankPoints)
-      .slice(0, 6);
-  }, [activeMembers, getCommitmentData]);
+  // ── CASH FLOW SERIES ──────────────────────────────────────────────
+  const cashFlow = useMemo(() => buildCashFlowSeries(state, 6), [state]);
 
-  // Recent projects
-  const recentProjects = useMemo(() => {
-    return [...state.projects]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5);
-  }, [state.projects]);
+  // ── ACTIVITY FEED ─────────────────────────────────────────────────
+  const activity = useMemo(() => buildActivityFeed(state, 8), [state]);
 
-  // Total contribution bank points
-  const totalContributionBank = useMemo(() => {
-    return activeMembers.reduce((sum, m) => sum + m.contributionBank.currentQuarterPoints, 0);
-  }, [activeMembers]);
+  // ── RECENT PROJECTS ───────────────────────────────────────────────
+  const recentProjects = useMemo(() =>
+    [...state.projects].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
+    [state.projects]);
 
-  const StatCard = ({
-    title,
-    value,
-    subtitle,
-    icon: Icon,
-    trend,
-    trendUp,
-    accent = false,
-    onClick,
-  }: {
-    title: string;
-    value: string;
-    subtitle?: string;
-    icon: React.ElementType;
-    trend?: string;
-    trendUp?: boolean;
-    accent?: boolean;
-    onClick?: () => void;
-  }) => (
-    <motion.div variants={fadeUpItem} whileHover={{ y: -2, transition: { duration: 0.15 } }} className="h-full">
-      <Card
-        className={`bg-card border transition-all h-full ${
-          accent ? 'border-primary/25 relative overflow-hidden accent-top' : 'border-border hover:border-primary/20'
-        } ${onClick ? 'cursor-pointer' : ''}`}
-        onClick={onClick}
-      >
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">{title}</p>
-              <p className={`text-xl font-semibold leading-tight mt-2 tracking-tight whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
-                {value}
-              </p>
-              {subtitle && <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{subtitle}</p>}
-              {trend && (
-                <div className={`inline-flex items-center gap-1 mt-2 text-xs font-medium px-1.5 py-0.5 rounded ${
-                  trendUp ? 'text-primary bg-primary/10' : 'text-destructive bg-destructive/10'
-                }`}>
-                  {trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                  {trend}
-                </div>
-              )}
-            </div>
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-              accent ? 'bg-primary/15' : 'bg-secondary'
-            }`}>
-              <Icon className={`w-4 h-4 ${accent ? 'text-primary' : 'text-muted-foreground'}`} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
+  // ── NEXT STEPS ────────────────────────────────────────────────────
+  const nextSteps = useMemo(() => {
+    const steps: Array<{ id: string; label: string; detail?: string; icon: any; onClick: () => void }> = [];
+    const overdue = (state.billing?.documents || []).filter((d: any) =>
+      d.type === 'invoice' && d.status !== 'paid' && d.dueDate && new Date(d.dueDate) < new Date());
+    if (overdue.length > 0) steps.push({
+      id: 'overdue', label: `${overdue.length} overdue invoice${overdue.length !== 1 ? 's' : ''}`,
+      detail: 'Follow up with clients', icon: Receipt, onClick: () => onViewChange?.('billing'),
+    });
+    if (metrics.confirmedUnpaidBonuses > 0) steps.push({
+      id: 'bonuses', label: 'Pay team bonuses',
+      detail: `${formatCurrency(metrics.confirmedUnpaidBonuses)} ready to distribute`,
+      icon: Users, onClick: () => onViewChange?.('capital'),
+    });
+    const projectsWithoutScores = state.projects.filter(p => p.type === 'client' && p.distribution.length === 0).length;
+    if (projectsWithoutScores > 0) steps.push({
+      id: 'score', label: `${projectsWithoutScores} project${projectsWithoutScores !== 1 ? 's' : ''} need scoring`,
+      detail: 'Assign team scores', icon: ListChecks, onClick: () => onViewChange?.('tasks'),
+    });
+    if (metrics.autoTransferPending && metrics.suggestedTransfer > 0) steps.push({
+      id: 'transfer', label: 'Month-end transfer ready',
+      detail: `${formatCurrency(metrics.suggestedTransfer)} from Company Fund`,
+      icon: Wallet, onClick: () => onViewChange?.('capital'),
+    });
+    if (steps.length === 0) steps.push({
+      id: 'create', label: 'Create a new project', detail: 'Run the calculator', icon: Calculator,
+      onClick: () => onViewChange?.('calculator'),
+    });
+    return steps;
+  }, [state.billing, state.projects, metrics, formatCurrency, onViewChange]);
 
-  // Billing health data
+  // ── BILLING DATA (for Billing tab) ───────────────────────────────
   const billing = state.billing;
   const invoices = billing.documents.filter(d => d.type === 'invoice');
   const unpaidInvoices = invoices.filter(i => i.status !== 'paid');
@@ -284,9 +180,49 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     return s + Math.max(0, inv.total * ((inv as any).exchangeRate || 1) - paid);
   }, 0);
 
+  // ── PROJECT STATUS TONE ──────────────────────────────────────────
+  const projectStatusTone = (p: any): StatusTone =>
+    p.paymentStatus === 'confirmed' ? 'lime'
+    : p.paymentStatus === 'partial' ? 'amber'
+    : 'blue';
+
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Month-end auto-transfer prompt */}
+    <div className="space-y-6">
+      {/* HERO GREETING */}
+      {(() => {
+        const founder = (state.members || []).find(m => m.type === 'Founder' && m.isActive);
+        const firstName = founder?.name?.split(' ')[0] || state.settings.companyName?.split(' ')[0] || 'there';
+        const hour = new Date().getHours();
+        const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+        const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return (
+          <div className="relative overflow-hidden rounded-2xl px-7 py-7 border border-border/50 bg-gradient-to-br from-primary/[0.07] via-card to-card">
+            <div className="absolute -top-10 -right-10 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+            <div className="relative flex items-start justify-between flex-wrap gap-6">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-tight">
+                  {greeting}, <span className="text-primary">{firstName}</span> 👋
+                </h1>
+                <p className="text-muted-foreground text-sm mt-2">{dateStr}</p>
+              </div>
+              <div className="flex gap-1 bg-secondary/40 p-1 rounded-xl border border-border/50">
+                {(['operations', 'billing'] as const).map(tab => (
+                  <button key={tab} onClick={() => setDashTab(tab)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
+                      dashTab === tab
+                        ? 'bg-card text-foreground shadow-sm border border-border/50'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}>
+                    {tab === 'operations' ? '⚙ Operations' : '💼 Billing'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* AUTO-TRANSFER PROMPT */}
       {dashTab === 'operations' && metrics.autoTransferPending && metrics.suggestedTransfer > 0 && (() => {
         const handleApprove = () => {
           const wcBalance = state.wcBalance || 0;
@@ -303,12 +239,10 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
           }});
           dispatch({ type: 'MARK_AUTO_TRANSFER_HANDLED', payload: new Date().toISOString().slice(0, 7) });
         };
-        const handleSkip = () => {
-          dispatch({ type: 'MARK_AUTO_TRANSFER_HANDLED', payload: new Date().toISOString().slice(0, 7) });
-        };
+        const handleSkip = () => dispatch({ type: 'MARK_AUTO_TRANSFER_HANDLED', payload: new Date().toISOString().slice(0, 7) });
         return (
-          <div className="flex items-center justify-between gap-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-            <div className="flex items-start gap-2.5">
+          <div className="flex items-center justify-between gap-3 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <div className="flex items-start gap-3">
               <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5 flex-shrink-0 animate-pulse" />
               <div>
                 <div className="text-sm font-medium text-blue-400">Month-end transfer ready</div>
@@ -318,8 +252,8 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               </div>
             </div>
             <div className="flex gap-2 flex-shrink-0">
-              <button onClick={handleSkip} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded border border-border">Skip</button>
-              <button onClick={handleApprove} className="text-xs text-blue-400 font-medium hover:text-blue-300 px-3 py-1 rounded border border-blue-500/30 bg-blue-500/10">
+              <button onClick={handleSkip} className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border">Skip</button>
+              <button onClick={handleApprove} className="text-xs text-blue-400 font-medium hover:text-blue-300 px-3 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10">
                 Transfer {formatCurrency(metrics.suggestedTransfer)} →
               </button>
             </div>
@@ -327,54 +261,332 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
         );
       })()}
 
-      {/* Confirmed unpaid bonuses alert */}
-      {dashTab === 'operations' && metrics.confirmedUnpaidBonuses > 0 && (
-        <div className="flex items-center justify-between gap-3 p-3 bg-primary/10 border border-primary/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-            <div className="text-sm">
-              <span className="font-medium text-primary">{metrics.confirmedUnpaidProjects.length} project{metrics.confirmedUnpaidProjects.length !== 1 ? 's' : ''} fully paid</span>
-              <span className="text-muted-foreground ml-1">— {formatCurrency(metrics.confirmedUnpaidBonuses)} in team bonuses ready to distribute</span>
+      {/* MAIN GRID — main column + right rail */}
+      {dashTab === 'operations' && (
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
+          {/* MAIN COLUMN */}
+          <div className="space-y-6 min-w-0">
+            {/* STAT ROW */}
+            <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Invoiced (Month)"
+                  numericValue={metrics.totalRevenue}
+                  format={formatCurrency}
+                  delta={metrics.revenueDelta}
+                  subtitle={`${metrics.clientProjects} project${metrics.clientProjects !== 1 ? 's' : ''} · projected`}
+                  icon={TrendingUp}
+                />
+              </motion.div>
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Received (Month)"
+                  numericValue={metrics.totalReceivedThisMonth}
+                  format={formatCurrency}
+                  delta={metrics.receivedDelta}
+                  subtitle="Cash received via Billing"
+                  icon={Wallet}
+                  accent
+                />
+              </motion.div>
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Bonus Pool"
+                  numericValue={metrics.totalBonusPool}
+                  format={formatCurrency}
+                  delta={metrics.bonusPoolDelta}
+                  subtitle={`${state.settings.revenueSplit.bonusPercent}% of net profit`}
+                  icon={Award}
+                />
+              </motion.div>
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Company Fund"
+                  numericValue={metrics.totalCompanyContribution}
+                  format={formatCurrency}
+                  delta={metrics.companyDelta}
+                  subtitle={`${state.settings.revenueSplit.companyPercent}% of net profit`}
+                  icon={Briefcase}
+                />
+              </motion.div>
+            </motion.div>
+
+            {/* SECONDARY ROW */}
+            <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Working Capital"
+                  numericValue={state.wcBalance || 0}
+                  format={formatCurrency}
+                  subtitle="Operations account"
+                  icon={Wallet}
+                  onClick={() => onViewChange?.('capital')}
+                />
+              </motion.div>
+              <motion.div variants={fadeUpItem}>
+                {(() => {
+                  const wc = state.wcBalance || 0;
+                  const runway = metrics.totalStipends > 0 ? Math.floor(wc / metrics.totalStipends) : 0;
+                  const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
+                  const burdenPct = wc > 0 && metrics.totalStipends > 0 ? Math.round((metrics.totalStipends / wc) * 100) : 0;
+                  const label = metrics.totalStipends === 0 ? 'No stipends'
+                    : wc < metrics.totalStipends ? '< 1 month'
+                    : `${runway} month${runway !== 1 ? 's' : ''}`;
+                  return (
+                    <StatCard
+                      title="Stipend Runway"
+                      value={label}
+                      subtitle={metrics.totalStipends === 0 ? 'No stipends configured' : `${burdenPct}% of WC · click to plan`}
+                      icon={Shield}
+                      accent={runway >= amber && metrics.totalStipends > 0}
+                      onClick={() => onViewChange?.('capital')}
+                    />
+                  );
+                })()}
+              </motion.div>
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Retained Profit"
+                  numericValue={metrics.retainedProfit}
+                  format={formatCurrency}
+                  subtitle="Accumulated earnings"
+                  icon={PiggyBank}
+                />
+              </motion.div>
+              <motion.div variants={fadeUpItem}>
+                <StatCard
+                  title="Deferred to Team"
+                  numericValue={metrics.totalDeferred}
+                  format={formatCurrency}
+                  subtitle={metrics.totalDeferred > 0 ? 'Owed — pay when WC allows' : 'No deferred ✓'}
+                  icon={Users}
+                />
+              </motion.div>
+            </motion.div>
+
+            {/* CHARTS ROW: Cash Flow + Work Type Donut */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Cash Flow — spans 2 cols */}
+              <Card className="bg-card border-border lg:col-span-2">
+                <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-medium">Cash Flow</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Last 6 months · WC, Bonus Bank, Company Fund</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-primary" /> WC</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-blue-400" /> Bonus Bank</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-purple-400" /> Co. Fund</span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CashFlowChart data={cashFlow} format={formatCurrency} height={260} />
+                </CardContent>
+              </Card>
+
+              {/* Work Type Donut */}
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Work Distribution</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Points by work type</p>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    const totalPts = workTypeData.reduce((s, w) => s + w.value, 0);
+                    return (
+                      <div className="h-[260px] flex flex-col items-center justify-center">
+                        <div className="relative w-40 h-40">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <defs>
+                                {workTypeData.map((w, i) => (
+                                  <linearGradient key={i} id={`pie-grad-${i}`} x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stopColor={w.color} stopOpacity={1} />
+                                    <stop offset="100%" stopColor={w.color} stopOpacity={0.55} />
+                                  </linearGradient>
+                                ))}
+                              </defs>
+                              <Pie data={workTypeData} cx="50%" cy="50%" innerRadius={50} outerRadius={75}
+                                   paddingAngle={4} cornerRadius={4} dataKey="value" stroke="none" animationDuration={900}>
+                                {workTypeData.map((_, i) => <Cell key={`c-${i}`} fill={`url(#pie-grad-${i})`} />)}
+                              </Pie>
+                              <Tooltip content={<BrandedTooltip format={(v) => `${v} pts`} />} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <div className="text-2xl font-semibold tabular"><AnimatedNumber value={totalPts} /></div>
+                            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">total pts</div>
+                          </div>
+                        </div>
+                        <div className="mt-4 w-full space-y-2">
+                          {workTypeData.length === 0 ? (
+                            <div className="text-xs text-muted-foreground text-center">No work logged yet</div>
+                          ) : workTypeData.map(item => {
+                            const pct = totalPts > 0 ? Math.round((item.value / totalPts) * 100) : 0;
+                            return (
+                              <div key={item.name} className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                                  <span className="text-foreground/80">{item.name}</span>
+                                </div>
+                                <span className="font-semibold tabular">{pct}%</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
             </div>
+
+            {/* RECENT PROJECTS */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-medium">Recent Projects</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">{recentProjects.length} most recent</p>
+                </div>
+                <button onClick={() => onViewChange?.('calculator')} className="text-xs text-primary font-medium hover:underline flex items-center gap-1">
+                  See all <ArrowRight className="w-3 h-3" />
+                </button>
+              </CardHeader>
+              <CardContent>
+                {recentProjects.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-8 italic">
+                    No projects yet. Use the Project Calculator to create your first project.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/40">
+                    {recentProjects.map((p, i) => (
+                      <motion.div
+                        key={p.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, delay: i * 0.04 }}
+                        className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
+                            {p.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium truncate">{p.name}</span>
+                              {p.type === 'client' && <StatusBadge tone={projectStatusTone(p)}>{p.paymentStatus || 'projected'}</StatusBadge>}
+                              {p.type !== 'client' && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{p.type}</span>}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {p.month} {p.type === 'client' ? `· ${formatCurrency(p.netProfit)} profit` : `· ${p.distribution.filter(d => d.totalScore > 0).length} scored`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-semibold tabular text-primary">
+                            {p.type === 'client' ? formatCurrency(p.bonusPool) : `${p.distribution.reduce((s, d) => s + d.totalScore, 0)} pts`}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">{p.type === 'client' ? 'bonus pool' : 'team points'}</div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-          <button onClick={() => onViewChange?.('capital')}
-            className="text-xs text-primary font-medium hover:underline whitespace-nowrap">
-            Pay via WC →
-          </button>
+
+          {/* RIGHT RAIL */}
+          <div className="space-y-5 xl:sticky xl:top-20 xl:self-start">
+            <NextStepsCard steps={nextSteps} subtitle="Smart suggestions based on your data" />
+
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Bell className="w-3.5 h-3.5 text-primary" />
+                  Notifications
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {(() => {
+                  const notes = (state.notifications || []).filter(n => !n.dismissed && !n.read).slice(0, 4);
+                  if (notes.length === 0) {
+                    return <div className="text-xs text-muted-foreground text-center py-4">No new notifications</div>;
+                  }
+                  return (
+                    <ul className="space-y-2.5">
+                      {notes.map(n => (
+                        <li key={n.id} className="flex items-start gap-2.5 text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-foreground leading-tight">{n.title}</div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{n.message}</div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-primary" />
+                  Recent Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <ActivityFeed items={activity} format={formatCurrency} emptyText="No financial activity yet" />
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5 text-primary" />
+                  Team
+                </CardTitle>
+                <span className="text-[11px] text-muted-foreground tabular">{activeMembers.length}</span>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-1">
+                  {activeMembers.slice(0, 6).map(m => (
+                    <TeamRailItem
+                      key={m.id}
+                      member={m}
+                      earnings={m.stipend}
+                      format={formatCurrency}
+                      onClick={() => onViewChange?.('team')}
+                    />
+                  ))}
+                  {activeMembers.length > 6 && (
+                    <button onClick={() => onViewChange?.('team')}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground py-2 mt-1">
+                      + {activeMembers.length - 6} more →
+                    </button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
-      {/* Header + tabs */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Overview of your system performance</p>
-        </div>
-        <div className="flex gap-1 bg-secondary/30 p-1 rounded-lg">
-          {(['operations', 'billing'] as const).map(tab => (
-            <button key={tab} onClick={() => setDashTab(tab)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
-                dashTab === tab ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}>
-              {tab === 'operations' ? '⚙ Operations' : '💼 Billing'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Billing health view */}
+      {/* BILLING TAB */}
       {dashTab === 'billing' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Outstanding', value: `MK ${totalOutstanding.toLocaleString()}`, color: 'text-amber-400', sub: `${unpaidInvoices.length} unpaid invoice${unpaidInvoices.length !== 1 ? 's' : ''}` },
+              { label: 'Outstanding', value: `MK ${totalOutstanding.toLocaleString()}`, color: 'text-amber-400', sub: `${unpaidInvoices.length} unpaid` },
               { label: 'Overdue', value: overdueInvoices.length, color: overdueInvoices.length > 0 ? 'text-destructive' : 'text-primary', sub: overdueInvoices.length > 0 ? 'Needs attention' : 'All on time ✓' },
               { label: 'Collected (Month)', value: `MK ${collectedThisMonth.toLocaleString()}`, color: 'text-primary', sub: 'This month' },
               { label: 'Pending Quotes', value: pendingQuotes.length, color: 'text-blue-400', sub: 'Awaiting response' },
             ].map(({ label, value, color, sub }) => (
               <Card key={label} className="bg-card border-border">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+                <CardContent className="p-5">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
                   <div className={`text-2xl font-semibold ${color}`}>{value}</div>
                   <div className="text-xs text-muted-foreground mt-1">{sub}</div>
                 </CardContent>
@@ -382,13 +594,10 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             ))}
           </div>
 
-          {/* Unpaid invoices list */}
           <Card className="bg-card border-border">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Unpaid Invoices</CardTitle>
-                <button onClick={() => onViewChange?.('billing')} className="text-xs text-primary hover:underline">Go to Billing →</button>
-              </div>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-medium">Unpaid Invoices</CardTitle>
+              <button onClick={() => onViewChange?.('billing')} className="text-xs text-primary hover:underline">Go to Billing →</button>
             </CardHeader>
             <CardContent>
               {unpaidInvoices.length === 0 ? (
@@ -406,7 +615,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">{inv.number}</span>
-                            {overdue && <span className="text-[10px] text-destructive font-medium">{overdueDays}d overdue</span>}
+                            {overdue && <StatusBadge tone="red">{overdueDays}d overdue</StatusBadge>}
                           </div>
                           <div className="text-xs text-muted-foreground">{client?.name || '—'} · Due {inv.dueDate || '—'}</div>
                         </div>
@@ -422,7 +631,6 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             </CardContent>
           </Card>
 
-          {/* Pending quotes */}
           {pendingQuotes.length > 0 && (
             <Card className="bg-card border-border">
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Pending Quotes</CardTitle></CardHeader>
@@ -446,356 +654,6 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
           )}
         </div>
       )}
-
-      {/* Operations view — original dashboard */}
-      {dashTab === 'operations' && <>
-
-      {/* Stipend Health Indicator */}
-      <Card className={`bg-card ${wcHealth.border} border-2`}>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-lg ${wcHealth.bg} flex items-center justify-center ${wcHealth.color}`}>
-              {wcHealth.icon}
-            </div>
-            <div className="flex-1">
-              <div className={`text-sm font-medium ${wcHealth.color}`}>
-                Working Capital: {wcHealth.status === 'healthy' ? 'Healthy' : wcHealth.status === 'caution' ? 'Caution' : 'Alert'}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {wcHealth.message}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground">
-                Received this month (Billing)
-              </div>
-              <div className="text-lg font-semibold">{formatCurrency(metrics.totalReceivedThisMonth)}</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Key Metrics */}
-      <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Invoiced (Month)"
-          value={formatCurrency(metrics.totalRevenue)}
-          subtitle={`${metrics.clientProjects} project${metrics.clientProjects !== 1 ? 's' : ''} · projected`}
-          icon={TrendingUp}
-        />
-        <StatCard
-          title="Received (Month)"
-          value={formatCurrency(metrics.totalReceivedThisMonth)}
-          subtitle="Cash received via Billing"
-          icon={Wallet}
-          accent
-        />
-        <StatCard
-          title="Bonus Pool"
-          value={formatCurrency(metrics.totalBonusPool)}
-          subtitle={`${state.settings.revenueSplit.bonusPercent}% of net profit · projected`}
-          icon={Award}
-        />
-        <StatCard
-          title="Company Fund"
-          value={formatCurrency(metrics.totalCompanyContribution)}
-          subtitle={`${state.settings.revenueSplit.companyPercent}% of net profit · projected`}
-          icon={Briefcase}
-        />
-      </motion.div>
-
-      {/* Secondary Metrics */}
-      <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Working Capital"
-          value={formatCurrency(state.wcBalance || 0)}
-          subtitle="Operations account"
-          icon={Wallet}
-          onClick={() => onViewChange?.('capital')}
-        />
-        {(() => {
-          const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
-          const wc = state.wcBalance || 0;
-          const runway = totalStipends > 0 ? Math.floor(wc / totalStipends) : 0;
-          const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
-          const burdenPct = wc > 0 && totalStipends > 0 ? Math.round((totalStipends / wc) * 100) : 0;
-          const label = totalStipends === 0 ? 'No stipends'
-            : wc < totalStipends ? '< 1 month'
-            : `${runway} month${runway !== 1 ? 's' : ''}`;
-          const subtitle = totalStipends === 0 ? 'No stipends configured'
-            : `${burdenPct}% of WC · click to plan`;
-          return (
-            <StatCard
-              title="Stipend Runway"
-              value={label}
-              subtitle={subtitle}
-              icon={Shield}
-              accent={runway >= amber && totalStipends > 0}
-              onClick={() => onViewChange?.('capital')}
-            />
-          );
-        })()}
-        <StatCard
-          title="Monthly Stipends"
-          value={formatCurrency(activeMembers.reduce((s, m) => s + m.stipend, 0))}
-          subtitle="Pay from Working Capital"
-          icon={PiggyBank}
-        />
-        <StatCard
-          title="Contribution Bank"
-          value={`${totalContributionBank} pts`}
-          subtitle="Team points this quarter"
-          icon={Clock}
-        />
-      </motion.div>
-
-      {/* Project Counts */}
-      <Card className="bg-card border-border">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-green-400">{metrics.clientProjects}</div>
-              <div className="text-xs text-muted-foreground">Client Projects</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-blue-400">{metrics.internalProjects}</div>
-              <div className="text-xs text-muted-foreground">Internal Projects</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-amber-400">{metrics.impressionProjects}</div>
-              <div className="text-xs text-muted-foreground">Impression Projects</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Retained Profit / Deferred Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Retained Profit */}
-        <Card className="bg-card border-border border-primary/20">
-          <CardContent className="p-5">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Retained Profit</div>
-            <div className="text-2xl font-semibold text-primary">{formatCurrency(metrics.retainedProfit)}</div>
-            <div className="text-xs text-muted-foreground mt-1">Accumulated company earnings</div>
-          </CardContent>
-        </Card>
-
-        {/* Deferred to Team */}
-        <Card className={`bg-card border ${metrics.totalDeferred > 0 ? 'border-red-500/40' : 'border-border'}`}>
-          <CardContent className="p-5">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Deferred to Team</div>
-            <div className={`text-2xl font-semibold ${metrics.totalDeferred > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
-              {metrics.totalDeferred > 0 ? formatCurrency(metrics.totalDeferred) : 'MK 0'}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {metrics.totalDeferred > 0 ? 'Owed to team — pay when WC allows' : 'No deferred stipends ✓'}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Trend */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Financial Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="#9a9490" 
-                    fontSize={11}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#9a9490" 
-                    fontSize={11}
-                    tickLine={false}
-                    tickFormatter={(v) => `${v/1000}k`}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      background: '#1e1e1e', 
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '6px'
-                    }}
-                    formatter={(v: number) => formatCurrency(v)}
-                  />
-                  <Bar dataKey="netProfit" name="Net Profit" fill="#73F764" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="bonusPool" name="Bonus Pool" fill="#4a9edd" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Work Distribution */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Work Type Distribution (Points)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center">
-              <ResponsiveContainer width="60%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={workTypeData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {workTypeData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      background: '#1e1e1e', 
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '6px'
-                    }}
-                    formatter={(v: number) => `${v} pts`}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2">
-                {workTypeData.map(item => (
-                  <div key={item.name} className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-xs text-muted-foreground">{item.name}</span>
-                    <span className="text-xs font-medium">{item.value} pts</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Team Pulse */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Team Pulse</CardTitle>
-              <span className="text-xs text-muted-foreground tabular-nums">{topPerformers.length} active</span>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {topPerformers.map((member, i) => {
-                const maxPts = Math.max(...topPerformers.map(m => m.commitment.contributionBankPoints), 1);
-                const pct = maxPts > 0 ? (member.commitment.contributionBankPoints / maxPts) * 100 : 0;
-                return (
-                  <motion.div
-                    key={member.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05, duration: 0.28 }}
-                    className="flex items-center gap-3"
-                  >
-                    <div className="relative flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-semibold text-primary">
-                        {member.name.charAt(0)}
-                      </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary ring-2 ring-card" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="min-w-0">
-                          <span className="text-sm font-medium leading-none block truncate">{member.name}</span>
-                          <span className="text-[11px] text-muted-foreground mt-0.5 block">{member.role}</span>
-                        </div>
-                        <span className="text-sm font-semibold text-primary tabular-nums ml-3 flex-shrink-0">
-                          {member.commitment.contributionBankPoints}
-                        </span>
-                      </div>
-                      <div className="h-[3px] bg-secondary rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full bg-primary"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 0.55, delay: i * 0.05 + 0.2, ease: 'easeOut' }}
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-              {topPerformers.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  No team data yet. Log work entries to see pulse.
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Projects */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Recent Projects</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {recentProjects.map(project => (
-                <div key={project.id} className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{project.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        project.type === 'client' ? 'bg-green-500/20 text-green-400' :
-                        project.type === 'internal' ? 'bg-blue-500/20 text-blue-400' :
-                        'bg-amber-500/20 text-amber-400'
-                      }`}>
-                        {project.type}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {project.month}{project.type === 'client' ? ` · Net Profit: ${formatCurrency(project.netProfit)}` : ` · ${project.distribution.filter(d => d.totalScore > 0).length} members scored`}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {project.type === 'client' ? (
-                      <>
-                        <div className="text-sm font-semibold text-primary">{formatCurrency(project.bonusPool)}</div>
-                        <div className="text-xs text-muted-foreground">bonus pool</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-sm font-semibold text-amber-400">
-                          {project.distribution.reduce((s, d) => s + d.totalScore, 0)} pts
-                        </div>
-                        <div className="text-xs text-muted-foreground">team points</div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {recentProjects.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  No projects yet. Use the Project Calculator to create your first project.
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </> }
     </div>
   );
-
-  
 }

@@ -14,6 +14,9 @@ import { WorkingCapital } from '@/sections/WorkingCapital';
 import { TasksAndScoring } from '@/sections/TasksAndScoring';
 import { AppProvider, useApp } from '@/hooks/useAppState';
 import { Toaster } from '@/components/ui/sonner';
+import { PageTransition } from '@/components/ui/page-transition';
+import { CommandPalette } from '@/components/ui/command-palette';
+import { Search } from 'lucide-react';
 import type { ViewType } from '@/types';
 import type { BillingDocument } from '@/types';
 
@@ -369,7 +372,20 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [billingView, setBillingView] = useState<BillingView>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { state } = useApp();
+
+  // Cmd/Ctrl+K opens command palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // Check for approval token in URL hash
   // Supports both formats:
@@ -432,18 +448,33 @@ function AppContent() {
       />
       {/* Fixed top bar */}
       <div
-        className="fixed top-0 right-0 z-40 h-12 bg-card border-b border-border flex items-center justify-end px-4 gap-3 transition-all duration-300"
+        className="fixed top-0 right-0 z-40 h-14 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 gap-3 transition-all duration-300"
         style={{ left: sidebarCollapsed ? '4rem' : '16rem' }}
       >
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="flex items-center gap-2 px-3 h-9 rounded-lg bg-secondary/40 border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all text-sm w-72 max-w-full"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span className="flex-1 text-left">Search or jump to…</span>
+          <kbd className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-card">⌘K</kbd>
+        </button>
         <NotificationPanel collapsed={false} />
       </div>
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onNavigate={(v) => { setCurrentView(v); setPaletteOpen(false); }}
+      />
       <main
         className={`transition-all duration-300 min-h-screen ${
           sidebarCollapsed ? 'ml-16' : 'ml-64'
         }`}
       >
-        <div className="p-6 max-w-6xl mx-auto pt-16 pb-24">
-          {renderView()}
+        <div className="p-8 max-w-7xl mx-auto pt-20 pb-24">
+          <PageTransition pageKey={currentView + (currentView === 'billing' ? ':' + billingView : '')}>
+            {renderView()}
+          </PageTransition>
         </div>
       </main>
       <Toaster 

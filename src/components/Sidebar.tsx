@@ -21,6 +21,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/hooks/useAppState';
 import type { ViewType } from '@/types';
@@ -175,15 +176,21 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
                       }
                     }}
                     className={cn(
-                      "w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-all duration-200",
-                      "hover:bg-secondary/50",
+                      "relative w-full flex items-center gap-3 mx-2 px-3 py-2.5 text-sm text-left rounded-lg transition-all duration-200",
                       isActive
-                        ? "bg-primary/10 text-primary border-l-2 border-primary"
-                        : "text-muted-foreground border-l-2 border-transparent",
+                        ? "bg-primary/12 text-primary font-medium"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                       collapsed && "justify-center px-2"
                     )}
                     title={collapsed ? item.label : undefined}
                   >
+                    {isActive && !collapsed && (
+                      <motion.span
+                        layoutId="active-pill"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-r-full"
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                    )}
                     <Icon className={cn("w-4 h-4 flex-shrink-0", isActive && "text-primary")} />
                     {!collapsed && <span className="truncate flex-1">{item.label}</span>}
                     {!collapsed && isBilling && (
@@ -461,28 +468,38 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
 
   return (
     <>
-      {/* Bell icon in sidebar */}
-      <div className="px-3 pb-1">
-        <button onClick={() => { setOpen(true); dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' }); }}
-          className="relative flex items-center gap-2 w-full px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors">
-          <Bell className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span className="text-sm">Notifications</span>}
-          {unread > 0 && (
-            <span className="absolute top-1.5 left-5 w-4 h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-              {unread > 9 ? '9+' : unread}
-            </span>
-          )}
-        </button>
-      </div>
+      {/* Compact bell trigger for topbar */}
+      <button onClick={() => { setOpen(true); dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' }); }}
+        aria-label="Notifications"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary/40 text-foreground hover:bg-secondary hover:border-primary/30 transition-all">
+        <Bell className="w-4 h-4" />
+        {unread > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-card">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+        {void collapsed}
+      </button>
 
-      {/* Drawer overlay */}
-      {open && (
-        <div className="fixed inset-0 z-50 flex">
-          {/* Backdrop */}
-          <div className="flex-1 bg-black/60" onClick={() => setOpen(false)} />
+      {/* Drawer overlay with slide-in animation */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 flex"
+          >
+            <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
-          {/* Panel */}
-          <div className="w-96 bg-card border-l border-border flex flex-col h-full overflow-hidden shadow-2xl">
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+              className="w-96 bg-card border-l border-border flex flex-col h-full overflow-hidden shadow-2xl"
+            >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
               <div>
@@ -633,9 +650,10 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
