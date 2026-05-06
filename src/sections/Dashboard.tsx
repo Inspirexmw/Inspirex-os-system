@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  TrendingUp,
   Award,
   Wallet,
   PiggyBank,
@@ -31,7 +30,6 @@ import { BrandedTooltip } from '@/components/ui/branded-tooltip';
 import { ActivityFeed } from '@/components/ui/activity-feed';
 import { TeamRailItem } from '@/components/ui/team-rail';
 import { NextStepsCard } from '@/components/ui/next-steps-card';
-import { OperationsPulse } from '@/components/ui/operations-pulse';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-pill';
 import { buildActivityFeed, buildCashFlowSeries } from '@/lib/activity-builder';
 
@@ -267,104 +265,106 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
           {/* MAIN COLUMN */}
           <div className="space-y-6 min-w-0">
-            {/* STAT ROW — combined Income card (Invoiced + Received) + Bonus Pool + Company Fund */}
+            {/* STAT ROW — 4 cards: Income · Profit · Working Capital · Retained Profit */}
             <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              {/* Combined Income card (spans 2 cols on xl+) */}
-              <motion.div variants={fadeUpItem} className="sm:col-span-2 xl:col-span-2">
+              {/* Income — Received (primary) + Invoiced (secondary) */}
+              <motion.div variants={fadeUpItem}>
                 <Card className="bg-card border-border h-full">
-                  <CardContent className="p-0">
-                    <div className="grid grid-cols-2 divide-x divide-border/40 h-full">
-                      {/* Invoiced */}
-                      <div className="p-6">
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Invoiced (Month)</span>
-                          <div className="w-7 h-7 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center"><TrendingUp className="w-3.5 h-3.5" /></div>
-                        </div>
-                        <div className="text-2xl xl:text-3xl font-semibold tracking-tight tabular whitespace-nowrap text-foreground">
-                          <AnimatedNumber value={metrics.totalRevenue} format={formatCurrency} />
-                        </div>
-                        <div className="mt-2"><DeltaPill value={metrics.revenueDelta} label="vs last month" /></div>
-                        <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
-                          {metrics.clientProjects} project{metrics.clientProjects !== 1 ? 's' : ''} · projected
-                        </p>
-                      </div>
-                      {/* Received */}
-                      <div className="p-6 relative">
-                        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</span>
-                          <div className="w-7 h-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center"><Wallet className="w-3.5 h-3.5" /></div>
-                        </div>
-                        <div className="text-2xl xl:text-3xl font-semibold tracking-tight tabular whitespace-nowrap text-primary">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</p>
+                        <p className="text-3xl font-semibold leading-none mt-3 tracking-tight tabular whitespace-nowrap text-primary">
                           <AnimatedNumber value={metrics.totalReceivedThisMonth} format={formatCurrency} />
-                        </div>
+                        </p>
                         <div className="mt-2"><DeltaPill value={metrics.receivedDelta} label="vs last month" /></div>
-                        <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">Cash received via Billing</p>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+                        <Wallet className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-5">
+                      <span className="text-[11px] text-muted-foreground">Invoiced (projected)</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalRevenue)}</span>
+                        <DeltaPill value={metrics.revenueDelta} size="xs" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
 
-              {/* Bonus Pool */}
+              {/* Profit — Company Fund (primary) + Bonus Pool (secondary) */}
+              <motion.div variants={fadeUpItem}>
+                <Card className="bg-card border-border h-full">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">Company Fund</p>
+                        <p className="text-3xl font-semibold leading-none mt-3 tracking-tight tabular whitespace-nowrap text-foreground">
+                          <AnimatedNumber value={metrics.totalCompanyContribution} format={formatCurrency} />
+                        </p>
+                        <div className="mt-2"><DeltaPill value={metrics.companyDelta} label="vs last month" /></div>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-secondary text-muted-foreground flex items-center justify-center flex-shrink-0">
+                        <Briefcase className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-5">
+                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                        <Award className="w-3 h-3" /> Bonus Pool
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold tabular text-foreground/80 whitespace-nowrap">{formatCurrency(metrics.totalBonusPool)}</span>
+                        <DeltaPill value={metrics.bonusPoolDelta} size="xs" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              {/* Working Capital */}
               <motion.div variants={fadeUpItem}>
                 <StatCard
-                  title="Bonus Pool"
-                  numericValue={metrics.totalBonusPool}
+                  title="Working Capital"
+                  numericValue={state.wcBalance || 0}
                   format={formatCurrency}
-                  delta={metrics.bonusPoolDelta}
-                  subtitle={`${state.settings.revenueSplit.bonusPercent}% of net profit`}
-                  icon={Award}
+                  subtitle="Operations account · click to manage"
+                  icon={Wallet}
+                  onClick={() => onViewChange?.('capital')}
                 />
               </motion.div>
 
-              {/* Company Fund */}
+              {/* Retained Profit */}
               <motion.div variants={fadeUpItem}>
                 <StatCard
-                  title="Company Fund"
-                  numericValue={metrics.totalCompanyContribution}
+                  title="Retained Profit"
+                  numericValue={metrics.retainedProfit}
                   format={formatCurrency}
-                  delta={metrics.companyDelta}
-                  subtitle={`${state.settings.revenueSplit.companyPercent}% of net profit`}
-                  icon={Briefcase}
+                  subtitle="Accumulated earnings"
+                  icon={PiggyBank}
                 />
               </motion.div>
             </motion.div>
 
-            {/* OPERATIONS PULSE — compact strip (Stipend Runway lives on WC page) */}
-            {(() => {
-              const wc = state.wcBalance || 0;
-              const stats: Parameters<typeof OperationsPulse>[0]['stats'] = [
-                {
-                  key: 'wc',
-                  label: 'Working Capital',
-                  value: wc,
-                  icon: Wallet,
-                  tone: 'lime',
-                  hint: 'Operations account',
-                  onClick: () => onViewChange?.('capital'),
-                },
-                {
-                  key: 'retained',
-                  label: 'Retained Profit',
-                  value: metrics.retainedProfit,
-                  icon: PiggyBank,
-                  tone: 'purple',
-                  hint: 'Accumulated earnings',
-                },
-              ];
-              if (metrics.totalDeferred > 0) {
-                stats.push({
-                  key: 'deferred',
-                  label: 'Deferred to Team',
-                  value: metrics.totalDeferred,
-                  icon: Users,
-                  tone: 'red',
-                  hint: 'Owed — pay when WC allows',
-                });
-              }
-              return <OperationsPulse formatCurrency={formatCurrency} stats={stats} />;
-            })()}
+            {/* Deferred to Team — only surfaces when there's a real backlog */}
+            {metrics.totalDeferred > 0 && (
+              <div className="flex items-center justify-between gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center flex-shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-red-400">Deferred to team — {formatCurrency(metrics.totalDeferred)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Owed from previous months · pay when WC allows</div>
+                  </div>
+                </div>
+                <button onClick={() => onViewChange?.('capital')}
+                  className="text-xs text-red-400 font-medium hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 whitespace-nowrap">
+                  Manage in WC →
+                </button>
+              </div>
+            )}
 
             {/* CHARTS ROW: Cash Flow + Work Type Donut */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
