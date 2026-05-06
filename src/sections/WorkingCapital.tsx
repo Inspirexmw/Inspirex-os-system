@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Download, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight,
+import { Plus, Download, Wallet, ArrowUpRight, ArrowDownRight,
          TrendingUp, Edit2, Trash2, Check, X, Users, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
