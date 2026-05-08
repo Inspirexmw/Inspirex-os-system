@@ -336,20 +336,24 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
     const invoices = state.billing?.documents?.filter((d: any) => d.type === 'invoice') || [];
     const overdue = invoices.filter((inv: any) => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today);
     if (overdue.length > 0) {
+      // Always normalize to MWK using each invoice's exchangeRate
       const totalOD = overdue.reduce((s: number, inv: any) => {
-        const paid = (inv.payments || []).reduce((ps: number, p: any) => ps + p.amount, 0);
-        return s + Math.max(0, inv.total - paid);
+        const rate = inv.exchangeRate || 1;
+        const paidMwk = (inv.payments || []).reduce((ps: number, p: any) =>
+          ps + (p.mwkEquivalent || p.amount * rate), 0);
+        return s + Math.max(0, inv.total * rate - paidMwk);
       }, 0);
-      const hasOD = existing.some(n => n.type === 'invoice_overdue' && !n.dismissed);
-      if (!hasOD) {
+      const todayId = 'overdue-' + today.toISOString().slice(0, 10);
+      const alreadyToday = existing.some(n => n.id === todayId);
+      if (!alreadyToday) {
         dispatch({ type: 'ADD_NOTIFICATION', payload: {
-          id: 'overdue-' + today.toISOString().slice(0,10),
+          id: todayId,
           type: 'invoice_overdue',
           title: `${overdue.length} overdue invoice${overdue.length !== 1 ? 's' : ''}`,
-          message: `MK ${totalOD.toLocaleString()} outstanding past due date. Follow up with clients.`,
+          message: `MK ${Math.round(totalOD).toLocaleString()} outstanding past due date. Follow up with clients.`,
           createdAt: new Date().toISOString(),
           read: false, dismissed: false,
-          actionData: { count: overdue.length, total: totalOD },
+          actionData: { count: overdue.length, total: Math.round(totalOD) },
         }});
       }
     }
