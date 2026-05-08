@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import {
   Plus, FileText,
@@ -421,19 +421,22 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
   const avatarColor = (id: string) => avatarColors[id.charCodeAt(0) % avatarColors.length];
 
   const clientStats = useMemo(() => {
-    const map: Record<string, { invoiceCount: number; receivables: number; paid: number; balance: number }> = {};
+    const map: Record<string, { invoiceCount: number; receivablesMwk: number; paidMwk: number; balanceMwk: number; isAllMwk: boolean }> = {};
     clients.forEach((c: BillingClient) => {
       const clientInvoices = documents.filter((d: BillingDocument) => d.type === 'invoice' && d.clientId === c.id);
-      // Show in client's own currency — no MWK conversion in this view
-      const receivables = clientInvoices.reduce((s: number, inv: BillingDocument) => s + inv.total, 0);
-      const paid = clientInvoices.reduce((s: number, inv: BillingDocument) =>
+      // Normalize everything to MWK so mixed-currency clients are comparable
+      const receivablesMwk = clientInvoices.reduce((s: number, inv: BillingDocument) =>
+        s + inv.total * (inv.exchangeRate || 1), 0);
+      const paidMwk = clientInvoices.reduce((s: number, inv: BillingDocument) =>
         s + inv.payments.reduce((ps: number, p: BillingPayment) =>
-          ps + (p.currency === c.currency ? p.amount : p.mwkEquivalent / (inv.exchangeRate || 1)), 0), 0);
+          ps + (p.mwkEquivalent || p.amount * (inv.exchangeRate || 1)), 0), 0);
+      const isAllMwk = clientInvoices.every((inv: BillingDocument) => inv.currency === 'MWK');
       map[c.id] = {
         invoiceCount: clientInvoices.length,
-        receivables,
-        paid,
-        balance: Math.max(0, receivables - paid),
+        receivablesMwk,
+        paidMwk,
+        balanceMwk: Math.max(0, receivablesMwk - paidMwk),
+        isAllMwk,
       };
     });
     return map;
@@ -482,17 +485,17 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Email</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Phone</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Currency</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Receivables</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Paid</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Balance</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Receivables <span className="text-[10px] text-muted-foreground/60">(MK)</span></th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Paid <span className="text-[10px] text-muted-foreground/60">(MK)</span></th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Balance <span className="text-[10px] text-muted-foreground/60">(MK)</span></th>
                 </tr>
               </thead>
               <tbody>
                 {clients.map((c: BillingClient) => {
-                  const stats = clientStats[c.id] ?? { invoiceCount: 0, receivables: 0, paid: 0, balance: 0 };
-                  const balanceColor = stats.balance === 0
+                  const stats = clientStats[c.id] ?? { invoiceCount: 0, receivablesMwk: 0, paidMwk: 0, balanceMwk: 0, isAllMwk: true };
+                  const balanceColor = stats.balanceMwk === 0
                     ? 'text-emerald-400'
-                    : stats.balance > 0 && stats.paid > 0
+                    : stats.balanceMwk > 0 && stats.paidMwk > 0
                     ? 'text-amber-400'
                     : 'text-red-400';
                   return (
@@ -513,18 +516,28 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
                       <td className="px-4 py-3 text-muted-foreground text-xs">{c.phone || '—'}</td>
                       <td className="px-4 py-3"><span className="text-xs text-primary font-medium">{c.currency}</span></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {stats.receivables > 0
-                          ? <span className="text-xs font-medium">{fmtAmt(stats.receivables, c.currency)}</span>
+                        {stats.receivablesMwk > 0
+                          ? <span className="text-xs font-medium">
+                              {!stats.isAllMwk && <span className="text-muted-foreground mr-0.5">≈</span>}
+                              {fmtAmt(Math.round(stats.receivablesMwk), 'MWK')}
+                            </span>
                           : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {stats.paid > 0
-                          ? <span className="text-xs font-medium text-emerald-400">{fmtAmt(stats.paid, c.currency)}</span>
+                        {stats.paidMwk > 0
+                          ? <span className="text-xs font-medium text-emerald-400">
+                              {!stats.isAllMwk && <span className="text-emerald-400/60 mr-0.5">≈</span>}
+                              {fmtAmt(Math.round(stats.paidMwk), 'MWK')}
+                            </span>
                           : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {stats.receivables > 0
-                          ? <span className={`text-xs font-semibold ${balanceColor}`}>{stats.balance === 0 ? '✓ Settled' : fmtAmt(stats.balance, c.currency)}</span>
+                        {stats.receivablesMwk > 0
+                          ? <span className={`text-xs font-semibold ${balanceColor}`}>
+                              {stats.balanceMwk === 0
+                                ? '✓ Settled'
+                                : <>{!stats.isAllMwk && <span className="opacity-60 mr-0.5">≈</span>}{fmtAmt(Math.round(stats.balanceMwk), 'MWK')}</>}
+                            </span>
                           : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                     </tr>
@@ -1105,7 +1118,8 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
   const today = new Date().toISOString().slice(0, 10);
   const [docType, setDocType] = useState<DocType>(ed ? ed.type as DocType : type === 'invoice' ? 'invoice' : 'quote');
   const [clientId, setClientId] = useState(ed?.clientId || clients[0]?.id || '');
-  const [currency, setCurrency] = useState<BillingCurrency>(ed?.currency || billing.settings.defaultCurrency);
+  const defaultClientCurrency = clients.find((c: BillingClient) => c.id === (ed?.clientId || clients[0]?.id))?.currency || billing.settings.defaultCurrency;
+  const [currency, setCurrency] = useState<BillingCurrency>(ed?.currency || defaultClientCurrency);
   const [issueDate, setIssueDate] = useState(ed?.issueDate || today);
   const [dueDate, setDueDate] = useState(ed?.dueDate || new Date(Date.now() + billing.settings.defaultPaymentTerms * 86400000).toISOString().slice(0, 10));
   const [validUntil, setValidUntil] = useState(ed?.validUntil || new Date(Date.now() + billing.settings.quoteValidityDays * 86400000).toISOString().slice(0, 10));
@@ -1116,6 +1130,17 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
   const [depositPercent, setDepositPercent] = useState<number>(ed?.depositPercent ?? 50);
   const [items, setItems] = useState<LineItem[]>(ed?.lineItems || [{ id: genId(), description: '', qty: 1, unitPrice: 0, total: 0 }]);
   const [exchangeRate, setExchangeRate] = useState<number>(ed?.exchangeRate ?? 1);
+
+  // When client changes on a new doc, pre-fill currency from client default (still overridable)
+  useEffect(() => {
+    if (!ed) {
+      const client = clients.find((c: BillingClient) => c.id === clientId);
+      if (client) {
+        setCurrency(client.currency);
+        if (client.currency === 'MWK') setExchangeRate(1);
+      }
+    }
+  }, [clientId]);
 
   const updateItem = (id: string, field: keyof LineItem, value: any) => {
     setItems(prev => prev.map(item => {
@@ -1196,7 +1221,12 @@ function DocumentForm({ type, clients, billing, dispatch, toast, onClose, editin
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Currency</Label>
+            <Label className="text-xs">
+              Quote Currency
+              {!ed && clients.find((c: BillingClient) => c.id === clientId)?.currency !== currency && (
+                <span className="ml-1 text-amber-400 font-normal">(overriding client default)</span>
+              )}
+            </Label>
             <Select value={currency} onValueChange={v => { setCurrency(v as BillingCurrency); if (v === 'MWK') setExchangeRate(1); }}>
               <SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-card border-border">{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
