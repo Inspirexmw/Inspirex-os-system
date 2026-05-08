@@ -168,7 +168,9 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
   const sendReminder = (inv: BillingDocument) => {
     const client = clients.find((c: BillingClient) => c.id === inv.clientId);
     if (!client?.email) return;
-    const paid = inv.payments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+    // Normalize payments to invoice currency for the email balance
+    const paid = inv.payments.reduce((s: number, p: BillingPayment) =>
+      s + (p.currency === inv.currency ? p.amount : (p.mwkEquivalent || 0) / (inv.exchangeRate || 1)), 0);
     const remaining = inv.total - paid;
     const daysOverdue = inv.dueDate ? Math.floor((Date.now() - new Date(inv.dueDate).getTime()) / 86400000) : 0;
     const daysLeft = inv.dueDate ? Math.ceil((new Date(inv.dueDate).getTime() - Date.now()) / 86400000) : 0;
@@ -221,7 +223,8 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
               <div className="space-y-2">
                 {unpaid.slice(0, 5).map((inv: BillingDocument) => {
                   const client = clients.find((c: BillingClient) => c.id === inv.clientId);
-                  const paid = inv.payments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+                  const paid = inv.payments.reduce((s: number, p: BillingPayment) =>
+                    s + (p.currency === inv.currency ? p.amount : (p.mwkEquivalent || 0) / (inv.exchangeRate || 1)), 0);
                   const remaining = inv.total - paid;
                   const od = isOverdue(inv);
                   const days = od && inv.dueDate ? Math.floor((Date.now() - new Date(inv.dueDate).getTime()) / 86400000) : 0;
@@ -262,7 +265,8 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
                     <div className="space-y-2">
                       {critical.map((inv: BillingDocument) => {
                         const client = clients.find((c: BillingClient) => c.id === inv.clientId);
-                        const paid = inv.payments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+                        const paid = inv.payments.reduce((s: number, p: BillingPayment) =>
+                          s + (p.currency === inv.currency ? p.amount : (p.mwkEquivalent || 0) / (inv.exchangeRate || 1)), 0);
                         const remaining = inv.total - paid;
                         const days = inv.dueDate ? Math.floor((Date.now() - new Date(inv.dueDate).getTime()) / 86400000) : 0;
                         return (
@@ -289,7 +293,8 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
                     <div className="space-y-2">
                       {upcoming.map((inv: BillingDocument) => {
                         const client = clients.find((c: BillingClient) => c.id === inv.clientId);
-                        const paid = inv.payments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+                        const paid = inv.payments.reduce((s: number, p: BillingPayment) =>
+                          s + (p.currency === inv.currency ? p.amount : (p.mwkEquivalent || 0) / (inv.exchangeRate || 1)), 0);
                         const remaining = inv.total - paid;
                         const daysLeft = inv.dueDate ? Math.ceil((new Date(inv.dueDate).getTime() - Date.now()) / 86400000) : 0;
                         return (
@@ -348,7 +353,9 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
                 const client = clients.find((c: BillingClient) => c.id === inv.clientId);
                 const depositPct = (inv as any).depositPercent || 50;
                 const depositAmt = Math.round(inv.total * depositPct / 100);
-                const totalPaid = inv.payments.reduce((s: number, p: BillingPayment) => s + p.amount, 0);
+                // Normalize payments to invoice currency for deposit comparison
+                const totalPaid = inv.payments.reduce((s: number, p: BillingPayment) =>
+                  s + (p.currency === inv.currency ? p.amount : (p.mwkEquivalent || 0) / (inv.exchangeRate || 1)), 0);
                 const remaining = inv.total - totalPaid;
                 const depositReceived = totalPaid >= depositAmt;
                 const progressPct = inv.total > 0 ? Math.min(100, Math.round((totalPaid / inv.total) * 100)) : 0;
