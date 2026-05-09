@@ -776,7 +776,7 @@ export function WorkingCapital() {
       {(() => {
         const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
         if (totalStipends === 0) return null;
-        const burdenPct = totalStipends > 0 ? Math.round((wcBalance / totalStipends) * 100) : 0;
+        const coveragePct = totalStipends > 0 ? Math.min(100, Math.round((wcBalance / totalStipends) * 100)) : 0;
         const runway = totalStipends > 0 ? Math.floor(wcBalance / totalStipends) : 0;
         const buffer = wcBalance - totalStipends;
         const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
@@ -800,8 +800,8 @@ export function WorkingCapital() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <div className={`text-2xl font-bold ${toneClasses.text}`}>{burdenPct}%</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">of payroll covered by WC</div>
+                  <div className={`text-2xl font-bold ${toneClasses.text}`}>{coveragePct}%</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">of next payroll covered</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {formatCurrency(wcBalance)} WC ÷ {formatCurrency(totalStipends)} stipends
                   </div>
