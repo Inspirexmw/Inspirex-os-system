@@ -666,7 +666,7 @@ export interface RecurringSchedule {
 
 // ─── EXPENSE TRACKING ────────────────────────────────────────────────────────
 
-export type ExpenseCategory = 'Design Assets' | 'Printing' | 'Software' | 'Travel' | 'Office' | 'Other';
+export type ExpenseCategory = 'Design Assets' | 'Printing' | 'Software' | 'Travel' | 'Office' | 'Contractor' | 'Other';
 export interface Expense {
   id: string;
   date: string;

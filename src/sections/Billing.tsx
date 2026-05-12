@@ -2721,13 +2721,14 @@ function ClientSidePanel({ client, documents, onEdit, onDelete, onClose, initial
 
 // ─── Project Costs View ──────────────────────────────────────────────────────
 
-const EXPENSE_CATEGORIES: ExpenseCategory[] = ['Design Assets', 'Printing', 'Software', 'Travel', 'Office', 'Other'];
+const EXPENSE_CATEGORIES: ExpenseCategory[] = ['Design Assets', 'Printing', 'Software', 'Travel', 'Office', 'Contractor', 'Other'];
 const CATEGORY_COLORS: Record<string, string> = {
   'Design Assets': 'bg-blue-500',
   'Printing': 'bg-amber-500',
   'Software': 'bg-purple-500',
   'Travel': 'bg-green-500',
   'Office': 'bg-gray-500',
+  'Contractor': 'bg-orange-500',
   'Other': 'bg-slate-400',
 };
 
