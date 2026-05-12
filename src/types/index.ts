@@ -635,6 +635,7 @@ export interface BillingDocument {
   sourceInvoiceId?: string;  // receipt → invoice link
   approvalToken?: string;    // quote approval link token
   approvalOpenedCount?: number;
+  isContractorProject?: boolean;  // if true, skip 40/60 split — 100% goes to Retained Profit
   createdAt: string;
   updatedAt: string;
 }
