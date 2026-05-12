@@ -916,6 +916,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const totalActualBonuses = clientProjects.reduce((sum, p) =>
       sum + p.distribution.reduce((s, d) => s + (d.finalBonus || 0), 0), 0);
 
+    // ── Billing invoices not already linked to a Project Calculator project ──
+    const linkedInvoiceIds = new Set(projects.map((p: any) => p.billingInvoiceId).filter(Boolean));
+    const companyPct = (state.settings.revenueSplit?.companyPercent ?? 60) / 100;
+    const bonusPct  = (state.settings.revenueSplit?.bonusPercent  ?? 40) / 100;
+
+    const billingInvoices = ((state.billing?.documents || []) as any[]).filter((doc: any) =>
+      doc.type === 'invoice' &&
+      !linkedInvoiceIds.has(doc.id) &&
+      (doc.payments || []).some((p: any) => p.date?.startsWith(month))
+    );
+
+    const billingRevenue = billingInvoices.reduce((sum: number, doc: any) => {
+      const monthPayments = (doc.payments || []).filter((p: any) => p.date?.startsWith(month));
+      return sum + monthPayments.reduce((s: number, p: any) => s + (p.mwkEquivalent || p.amount || 0), 0);
+    }, 0);
+
+    const billingExpenses = ((state.billing?.expenses || []) as any[])
+      .filter((e: any) => billingInvoices.some((inv: any) => inv.id === e.invoiceId) && e.date?.startsWith(month))
+      .reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+
+    const billingNetProfit = billingRevenue - billingExpenses;
+
+    const billingCompanyContribution = billingInvoices.reduce((sum: number, doc: any) => {
+      const monthPayments = (doc.payments || []).filter((p: any) => p.date?.startsWith(month));
+      const rev = monthPayments.reduce((s: number, p: any) => s + (p.mwkEquivalent || p.amount || 0), 0);
+      return sum + (doc.isContractorProject ? rev : rev * companyPct);
+    }, 0);
+
+    const billingBonusPool = billingInvoices.reduce((sum: number, doc: any) => {
+      const monthPayments = (doc.payments || []).filter((p: any) => p.date?.startsWith(month));
+      const rev = monthPayments.reduce((s: number, p: any) => s + (p.mwkEquivalent || p.amount || 0), 0);
+      return sum + (doc.isContractorProject ? 0 : rev * bonusPct);
+    }, 0);
+
     // Per-member bonus breakdown
     const memberBreakdown: MonthlyStipendBreakdown[] = activeMembers.map(m => {
       let bonus = 0;
@@ -932,25 +966,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const actualPaid = stipendTxs.reduce((s, t) => s + t.amount, 0);
       const stipendPaid = actualPaid > 0 ? actualPaid : m.stipend;
       const stipendDeferred = m.deferredStipendBalance || 0;
-      return { 
-        memberId: m.id, 
-        memberName: m.name, 
+      return {
+        memberId: m.id,
+        memberName: m.name,
         fullStipend: m.stipend,
         stipendPaid,
         stipendDeferred,
       };
     });
     return {
-      totalRevenue,
-      totalDirectExpenses,
-      totalNetProfit,
-      totalCompanyContributions,
-      totalBonusPools,
+      totalRevenue:               totalRevenue + billingRevenue,
+      totalDirectExpenses:        totalDirectExpenses + billingExpenses,
+      totalNetProfit:             totalNetProfit + billingNetProfit,
+      totalCompanyContributions:  totalCompanyContributions + billingCompanyContribution,
+      totalBonusPools:            totalBonusPools + billingBonusPool,
+      netCompanyFund:             totalCompanyContributions + billingCompanyContribution,
       totalActualBonuses,
       memberBreakdown,
       projects,
+      // Billing-only invoice data (for display in Monthly Summary)
+      billingInvoices,
+      billingRevenue,
+      billingExpenses,
+      billingCompanyContribution,
+      billingBonusPool,
     };
-  }, [getMonthlyProjects, getActiveMembers]);
+  }, [getMonthlyProjects, getActiveMembers, state.billing, state.settings.revenueSplit, state.wcTransactions]);
 
     const getContributionBankReward = useCallback((memberId: string) => {
     const member = getMemberById(memberId);
