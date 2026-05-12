@@ -54,9 +54,14 @@ export function MonthlySummary() {
   const confirmedProjects = monthProjects.filter(p => confirmedProjectIds.has(p.id));
   const partialProjects = monthProjects.filter(p => !confirmedProjectIds.has(p.id) && (p.paymentStatus === 'partial' || (state.billing.documents || []).some((d: any) => d.id === p.billingInvoiceId && d.payments?.length > 0)));
   const projectedProjects = monthProjects.filter(p => !confirmedProjectIds.has(p.id) && !partialProjects.find(pp => pp.id === p.id));
-  const confirmedRevenue = confirmedProjects.reduce((s, p) => s + p.paidAmount, 0);
-  const hasAllConfirmed = monthProjects.length > 0 && projectedProjects.length === 0 && partialProjects.length === 0;
-  const hasNoneConfirmed = monthProjects.length > 0 && confirmedProjects.length === 0 && partialProjects.length === 0;
+  const _confirmedRevenue = confirmedProjects.reduce((s, p) => s + p.paidAmount, 0); void _confirmedRevenue;
+  // Billing-only invoices (already paid — always confirmed)
+  const billingInvoices: any[] = monthlyData.billingInvoices || [];
+  const billingRevenue: number = monthlyData.billingRevenue || 0;
+  const totalCount = monthProjects.length + billingInvoices.length;
+  const totalConfirmed = confirmedProjects.length + billingInvoices.length; // billing invoices are always paid
+  const hasAllConfirmed = totalCount > 0 && projectedProjects.length === 0 && partialProjects.length === 0;
+  const hasNoneConfirmed = totalCount > 0 && totalConfirmed === 0;
   const paymentLabel = hasAllConfirmed ? 'CONFIRMED' : hasNoneConfirmed ? 'PROJECTED' : 'MIXED';
   const paymentColor = hasAllConfirmed ? 'text-primary' : hasNoneConfirmed ? 'text-amber-400' : 'text-blue-400';
 
@@ -588,8 +593,8 @@ export function MonthlySummary() {
         <Card className="bg-card border-border">
           <CardContent className="p-8 text-center text-muted-foreground">
             <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>No client projects found for this month.</p>
-            <p className="text-sm mt-1">Use the Project Calculator to add projects.</p>
+            <p>No revenue found for this month.</p>
+            <p className="text-sm mt-1">Record invoice payments in Billing or add projects in the Project Calculator.</p>
           </CardContent>
         </Card>
       ) : (
@@ -602,14 +607,14 @@ export function MonthlySummary() {
                 hasAllConfirmed ? 'bg-primary/10 text-primary' :
                 hasNoneConfirmed ? 'bg-amber-500/10 text-amber-400' :
                 'bg-blue-500/10 text-blue-400'
-              }`}>{paymentLabel} · {confirmedProjects.length}/{monthProjects.length} projects paid</span>
+              }`}>{paymentLabel} · {totalConfirmed}/{totalCount} paid</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="bg-card border-border">
                 <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground uppercase">Total Invoiced</div>
+                  <div className="text-xs text-muted-foreground uppercase">Total Received</div>
                   <div className="text-xl font-semibold mt-1">{formatCurrency(monthlyData.totalRevenue)}</div>
-                  <div className={`text-xs mt-1 ${paymentColor}`}>{paymentLabel} · {confirmedRevenue > 0 ? formatCurrency(confirmedRevenue) + ' received' : 'awaiting payment'}</div>
+                  <div className={`text-xs mt-1 ${paymentColor}`}>{paymentLabel} · {totalCount} invoice{totalCount !== 1 ? 's' : ''}</div>
                 </CardContent>
               </Card>
               <Card className="bg-card border-border">
@@ -621,11 +626,46 @@ export function MonthlySummary() {
               </Card>
               <Card className="bg-card border-border border-primary/30">
                 <CardContent className="p-4">
-                  <div className="text-xs text-primary uppercase">Total Project Net Profit</div>
+                  <div className="text-xs text-primary uppercase">Net Profit</div>
                   <div className="text-xl font-semibold mt-1 text-primary">{formatCurrency(monthlyData.totalNetProfit)}</div>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Billing invoices breakdown */}
+            {billingInvoices.length > 0 && (
+              <div className="mt-3 rounded-lg border border-border overflow-hidden">
+                <div className="px-3 py-2 bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                  Billing Income — {billingInvoices.length} invoice{billingInvoices.length !== 1 ? 's' : ''} paid this month
+                </div>
+                {billingInvoices.map((inv: any) => {
+                  const client = (state.billing.clients || []).find((c: any) => c.id === inv.clientId);
+                  const monthPayments = (inv.payments || []).filter((p: any) => p.date?.startsWith(selectedMonth));
+                  const invRevenue = monthPayments.reduce((s: number, p: any) => s + (p.mwkEquivalent || p.amount || 0), 0);
+                  return (
+                    <div key={inv.id} className="flex items-center justify-between px-3 py-2 border-t border-border/50 text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-xs text-muted-foreground">{inv.number}</span>
+                        <span>{client?.name || '—'}</span>
+                        {inv.isContractorProject && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">Contractor</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="text-muted-foreground">{inv.isContractorProject ? '100% retained' : `${state.settings.revenueSplit?.companyPercent ?? 60}/${state.settings.revenueSplit?.bonusPercent ?? 40} split`}</span>
+                        <span className="font-semibold text-primary">{formatCurrency(invRevenue)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {billingRevenue > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-secondary/20 text-xs font-medium">
+                    <span className="text-muted-foreground">Billing subtotal</span>
+                    <span>{formatCurrency(billingRevenue)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* SPLIT Section */}
