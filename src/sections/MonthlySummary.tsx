@@ -114,26 +114,39 @@ export function MonthlySummary() {
   // Export CSV
   const exportCSV = useCallback(() => {
     const projects = state.projects.filter(p => p.month === selectedMonth);
-    if (projects.length === 0) {
+    const billingInvs: any[] = monthlyData.billingInvoices || [];
+    if (projects.length === 0 && billingInvs.length === 0) {
       toast({ title: 'Error', description: 'No data for this month', variant: 'destructive' });
       return;
     }
-    
+
+    const billingRows: any[][] = billingInvs.length > 0 ? [
+      [],
+      ['BILLING INCOME'],
+      ['Invoice', 'Client', 'Type', 'Amount (MWK)'],
+      ...billingInvs.map((inv: any) => {
+        const client = (state.billing.clients || []).find((c: any) => c.id === inv.clientId);
+        const monthPayments = (inv.payments || []).filter((p: any) => p.date?.startsWith(selectedMonth));
+        const rev = monthPayments.reduce((s: number, p: any) => s + (p.mwkEquivalent || p.amount || 0), 0);
+        return [inv.number, client?.name || '—', inv.isContractorProject ? 'Contractor (100% retained)' : `${revenueSplit.companyPercent}/${revenueSplit.bonusPercent} split`, rev];
+      }),
+    ] : [];
+
     const rows = [
       ['Monthly Summary', selectedMonth],
       [],
       ['REVENUE'],
-      ['Total Gross Revenue (client projects)', monthlyData.totalRevenue],
+      ['Total Received', monthlyData.totalRevenue],
       ['Total Direct Expenses', monthlyData.totalDirectExpenses],
-      ['Total Project Net Profit', monthlyData.totalNetProfit],
+      ['Net Profit', monthlyData.totalNetProfit],
+      ...billingRows,
       [],
       ['SPLIT'],
-      ['Company Contributions', monthlyData.totalCompanyContributions],
-      ['Total Bonus Pools', monthlyData.totalBonusPools],
+      ['Company Fund', monthlyData.totalCompanyContributions],
+      ['Bonus Pools', monthlyData.totalBonusPools],
       [],
       ['STIPENDS'],
       ['Total Stipends Owed', activeMembers.reduce((s,m) => s + m.stipend, 0)],
-      ['Revenue Threshold Status', 'full'],
       ['Stipends Paid This Month', activeMembers.reduce((s,m) => s + m.stipend, 0)],
       ['Stipends Deferred', 0],
       [],
@@ -149,7 +162,7 @@ export function MonthlySummary() {
         return [m.memberName, m.fullStipend, m.stipendPaid, m.stipendDeferred, earnings.bonus, m.stipendPaid + earnings.bonus];
       }),
     ];
-    
+
     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -157,14 +170,15 @@ export function MonthlySummary() {
     a.href = url;
     a.download = `inspirex-summary-${selectedMonth}.csv`;
     a.click();
-    
+
     toast({ title: 'Exported', description: 'Monthly summary exported to CSV' });
-  }, [monthlyData, selectedMonth, state.projects, toast, getMemberMonthlyEarnings]);
+  }, [monthlyData, selectedMonth, state.projects, state.billing.clients, revenueSplit, toast, getMemberMonthlyEarnings]);
 
   // Export Financial Report PDF — dark theme + logo
   const exportPDF = useCallback(() => {
     const projects = state.projects.filter(p => p.month === selectedMonth);
-    if (projects.length === 0) {
+    const billingInvs: any[] = monthlyData.billingInvoices || [];
+    if (projects.length === 0 && billingInvs.length === 0) {
       toast({ title: 'Error', description: 'No data for this month', variant: 'destructive' });
       return;
     }
@@ -250,15 +264,44 @@ export function MonthlySummary() {
 
     // ── Revenue ──
     pdfSection('Revenue');
-    pdfRow('Total Gross Revenue (Client Projects)', `${sym} ${monthlyData.totalRevenue.toLocaleString()}`);
+    pdfRow('Total Received', `${sym} ${monthlyData.totalRevenue.toLocaleString()}`);
     pdfRow('Total Direct Expenses', `-${sym} ${monthlyData.totalDirectExpenses.toLocaleString()}`);
     y += 5;
     pdfDivider(true);
     y += 2;
     doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor('#73F764');
-    doc.text('Total Project Net Profit', margin, y);
+    doc.text('Net Profit', margin, y);
     doc.text(`${sym} ${monthlyData.totalNetProfit.toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
     y += 10;
+
+    // ── Billing Income ──
+    if (billingInvs.length > 0) {
+      pdfSection(`Billing Income — ${billingInvs.length} invoice${billingInvs.length !== 1 ? 's' : ''} paid this month`);
+      // Header row
+      doc.setFillColor('#1a1a1a');
+      doc.roundedRect(margin, y - 1, contentWidth, 7, 1.5, 1.5, 'F');
+      doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor('#888888');
+      doc.text('Invoice', margin + 3, y + 4);
+      doc.text('Client', margin + 35, y + 4);
+      doc.text('Type', margin + 110, y + 4);
+      doc.text('Amount (MWK)', pageWidth - margin - 3, y + 4, { align: 'right' });
+      y += 8;
+      billingInvs.forEach((inv: any, i: number) => {
+        const client = (state.billing.clients || []).find((c: any) => c.id === inv.clientId);
+        const monthPayments = (inv.payments || []).filter((p: any) => p.date?.startsWith(selectedMonth));
+        const rev = monthPayments.reduce((s: number, p: any) => s + (p.mwkEquivalent || p.amount || 0), 0);
+        if (i % 2 === 0) { doc.setFillColor('#111111'); doc.rect(margin, y - 1, contentWidth, 7, 'F'); }
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor('#CCCCCC');
+        doc.text(inv.number, margin + 3, y + 4);
+        doc.text((client?.name || '—').substring(0, 35), margin + 35, y + 4);
+        doc.setTextColor(inv.isContractorProject ? '#e0a840' : '#888888');
+        doc.text(inv.isContractorProject ? 'Contractor — 100% retained' : `${revenueSplit.companyPercent}/${revenueSplit.bonusPercent} split`, margin + 110, y + 4);
+        doc.setTextColor('#73F764'); doc.setFont('helvetica', 'bold');
+        doc.text(`${sym} ${Math.round(rev).toLocaleString()}`, pageWidth - margin - 3, y + 4, { align: 'right' });
+        y += 7;
+      });
+      y += 4;
+    }
 
     // ── Split ──
     pdfSection('Revenue Split');
@@ -330,7 +373,7 @@ export function MonthlySummary() {
 
     doc.save(filename);
     toast({ title: '✓ Report downloaded', description: `${filename} saved to your Downloads folder` });
-  }, [monthlyData, selectedMonth, state.projects, state.settings, state.billing.settings, activeMembers, getMemberMonthlyEarnings, revenueSplit, memberBreakdownData, toast]);
+  }, [monthlyData, selectedMonth, state.projects, state.settings, state.billing.settings, state.billing.clients, activeMembers, getMemberMonthlyEarnings, revenueSplit, memberBreakdownData, toast]);
 
   // Get month name
   const monthName = useMemo(() => {
