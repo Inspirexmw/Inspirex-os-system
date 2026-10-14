@@ -2,16 +2,11 @@ import { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { Sidebar, NotificationPanel } from '@/components/Sidebar';
 import { Dashboard } from '@/sections/Dashboard';
-import { ProjectCalculator } from '@/sections/ProjectCalculator';
-import { WorkLog } from '@/sections/WorkLog';
-import { CommitmentTracker } from '@/sections/CommitmentTracker';
 import { MonthlySummary } from '@/sections/MonthlySummary';
-import { TeamManagement } from '@/sections/TeamManagement';
 import { Settings } from '@/sections/Settings';
 import { Billing } from '@/sections/Billing';
 import type { BillingView } from '@/sections/Billing';
 import { WorkingCapital } from '@/sections/WorkingCapital';
-import { TasksAndScoring } from '@/sections/TasksAndScoring';
 import { AppProvider, useApp } from '@/hooks/useAppState';
 import { Toaster } from '@/components/ui/sonner';
 import { PageTransition } from '@/components/ui/page-transition';
@@ -413,18 +408,8 @@ function AppContent() {
     switch (currentView) {
       case 'dashboard':
         return <Dashboard onViewChange={setCurrentView} />;
-      case 'tasks':
-        return <TasksAndScoring />;
-      case 'calculator':
-        return <ProjectCalculator />;
-      case 'worklog':
-        return <WorkLog />;
-      case 'commitment':
-        return <CommitmentTracker />;
       case 'summary':
         return <MonthlySummary />;
-      case 'team':
-        return <TeamManagement />;
       case 'capital':
         return <WorkingCapital />;
       case 'settings':

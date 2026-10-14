@@ -1,17 +1,15 @@
 import { useState, useCallback } from 'react';
-import { Save, Download, Upload, Trash2, AlertTriangle, Check, RotateCcw, Plus, X } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Save, Download, Upload, Trash2, AlertTriangle, Check, RotateCcw } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useApp } from '@/hooks/useAppState';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { DEFAULT_SETTINGS } from '@/types';
-import type { ContributionBankTier } from '@/types';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -27,25 +25,16 @@ export function Settings() {
   const [importText, setImportText] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [clearDataDialogOpen, setClearDataDialogOpen] = useState(false);
-  const [newTier, setNewTier] = useState<Partial<ContributionBankTier>>({ minPoints: 0, maxPoints: 0, rewardPercent: 0, type: 'recognition' });
-
-  // Validation
-  const scoringWeightsTotal = settings.scoringWeights.deliverables + settings.scoringWeights.responsibility + settings.scoringWeights.quality;
-  const isValid = scoringWeightsTotal === 100;
 
   const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   // Save settings
   const saveSettings = useCallback(() => {
-    if (!isValid) {
-      toast({ title: 'Error', description: 'Weights must total 100', variant: 'destructive' });
-      return;
-    }
     const now = new Date().toISOString();
     dispatch({ type: 'UPDATE_SETTINGS', payload: { ...settings, lastSavedAt: now } });
     setLastSaved(now);
     toast({ title: '✓ Settings saved', description: 'All changes saved to browser storage' });
-  }, [settings, dispatch, toast, isValid]);
+  }, [settings, dispatch, toast]);
 
   // Update nested setting
   const updateSetting = useCallback((path: string, value: any) => {
@@ -62,50 +51,6 @@ export function Settings() {
     });
   }, []);
 
-  // Handle company split change
-  const handleCompanySplitChange = useCallback((value: number[]) => {
-    setSettings(prev => ({
-      ...prev,
-      revenueSplit: {
-        companyPercent: value[0],
-        bonusPercent: 100 - value[0],
-      }
-    }));
-  }, []);
-
-  // Add contribution bank tier
-  const addTier = useCallback(() => {
-    if (newTier.minPoints === undefined || newTier.maxPoints === undefined || newTier.rewardPercent === undefined) return;
-    
-    const tier: ContributionBankTier = {
-      minPoints: newTier.minPoints,
-      maxPoints: newTier.maxPoints,
-      rewardPercent: newTier.rewardPercent,
-      type: newTier.type || 'recognition',
-    };
-    
-    setSettings(prev => ({
-      ...prev,
-      contributionBank: {
-        ...prev.contributionBank,
-        tiers: [...prev.contributionBank.tiers, tier].sort((a, b) => a.minPoints - b.minPoints),
-      }
-    }));
-    setNewTier({ minPoints: 0, maxPoints: 0, rewardPercent: 0, type: 'recognition' });
-  }, [newTier]);
-
-  // Remove tier
-  const removeTier = useCallback((index: number) => {
-    setSettings(prev => ({
-      ...prev,
-      contributionBank: {
-        ...prev.contributionBank,
-        tiers: prev.contributionBank.tiers.filter((_, i) => i !== index),
-      }
-    }));
-  }, []);
-
-  // Export data
   const handleExport = useCallback(() => {
     const data = exportData();
     const blob = new Blob([data], { type: 'application/json' });
@@ -158,17 +103,6 @@ export function Settings() {
           Customize your compensation system and manage data
         </p>
       </div>
-
-      {/* Validation Banner */}
-      {!isValid && (
-        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
-          <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0" />
-          <div className="text-sm text-destructive">
-            {scoringWeightsTotal !== 100 && `Scoring weights total ${scoringWeightsTotal}, must be 100. `}
-
-          </div>
-        </div>
-      )}
 
       {/* Section 1: Company & Display */}
       <Card className="bg-card border-border">
@@ -281,323 +215,17 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Section 2: Revenue Split */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            Revenue Split
-          </CardTitle>
-          <CardDescription>
-            These percentages apply to each project's gross profit. Stipends are deducted separately at the monthly level.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-400">{settings.revenueSplit.companyPercent}%</div>
-              <div className="text-xs text-muted-foreground">Company Fund</div>
-            </div>
-            <div className="flex-1 mx-6">
-              <Slider
-                value={[settings.revenueSplit.companyPercent]}
-                onValueChange={handleCompanySplitChange}
-                min={0}
-                max={100}
-                step={5}
-                className="w-full"
-              />
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{settings.revenueSplit.bonusPercent}%</div>
-              <div className="text-xs text-muted-foreground">Bonus Pool</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Section 3: Scoring Weights */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Scoring Weights
-            </CardTitle>
-            <div className={`text-sm font-medium ${scoringWeightsTotal === 100 ? 'text-primary' : 'text-destructive'}`}>
-              Total: {scoringWeightsTotal}/100
-            </div>
-          </div>
-          <CardDescription>
-            Maximum points for each dimension. Must total 100.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Deliverables</Label>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={settings.scoringWeights.deliverables}
-                onChange={(e) => updateSetting('scoringWeights.deliverables', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Responsibility</Label>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={settings.scoringWeights.responsibility}
-                onChange={(e) => updateSetting('scoringWeights.responsibility', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Quality</Label>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={settings.scoringWeights.quality}
-                onChange={(e) => updateSetting('scoringWeights.quality', parseInt(e.target.value) || 0)}
-                className="bg-secondary border-input"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Section 6: Contribution Bank */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            Contribution Bank
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Quarter Start Month</Label>
-              <Select 
-                value={settings.contributionBank.quarterStartMonth} 
-                onValueChange={(v) => updateSetting('contributionBank.quarterStartMonth', v)}
-              >
-                <SelectTrigger className="bg-secondary border-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {MONTHS.map(m => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Payout Timing</Label>
-              <Select 
-                value={settings.contributionBank.payoutTiming} 
-                onValueChange={(v: 'auto' | 'founder_approval') => updateSetting('contributionBank.payoutTiming', v)}
-              >
-                <SelectTrigger className="bg-secondary border-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="auto">End of quarter automatically</SelectItem>
-                  <SelectItem value="founder_approval">Requires founder approval</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          {/* Tiers Table */}
-          <div className="space-y-2">
-            <Label>Reward Tiers</Label>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 px-2 text-xs font-medium text-muted-foreground">Min Points</th>
-                    <th className="text-left py-2 px-2 text-xs font-medium text-muted-foreground">Max Points</th>
-                    <th className="text-left py-2 px-2 text-xs font-medium text-muted-foreground">Reward %</th>
-                    <th className="text-left py-2 px-2 text-xs font-medium text-muted-foreground">Type</th>
-                    <th className="w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {settings.contributionBank.tiers.map((tier, index) => (
-                    <tr key={index} className="border-b border-border/50">
-                      <td className="py-2 px-2 text-sm">{tier.minPoints}</td>
-                      <td className="py-2 px-2 text-sm">{tier.maxPoints}</td>
-                      <td className="py-2 px-2 text-sm">{tier.rewardPercent}%</td>
-                      <td className="py-2 px-2 text-sm capitalize">{tier.type.replace(/_/g, ' ')}</td>
-                      <td className="py-2 px-2">
-                        <Button variant="ghost" size="sm" onClick={() => removeTier(index)} className="h-6 w-6 p-0">
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Add Tier */}
-            <div className="flex gap-2 items-end">
-              <div className="space-y-1">
-                <Label className="text-xs">Min</Label>
-                <Input
-                  type="number"
-                  value={newTier.minPoints}
-                  onChange={(e) => setNewTier(t => ({ ...t, minPoints: parseInt(e.target.value) || 0 }))}
-                  className="w-20 bg-secondary border-input"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Max</Label>
-                <Input
-                  type="number"
-                  value={newTier.maxPoints}
-                  onChange={(e) => setNewTier(t => ({ ...t, maxPoints: parseInt(e.target.value) || 0 }))}
-                  className="w-20 bg-secondary border-input"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">%</Label>
-                <Input
-                  type="number"
-                  value={newTier.rewardPercent}
-                  onChange={(e) => setNewTier(t => ({ ...t, rewardPercent: parseInt(e.target.value) || 0 }))}
-                  className="w-20 bg-secondary border-input"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Type</Label>
-                <Select 
-                  value={newTier.type} 
-                  onValueChange={(v: any) => setNewTier(t => ({ ...t, type: v }))}
-                >
-                  <SelectTrigger className="w-40 bg-secondary border-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    <SelectItem value="recognition">Recognition only</SelectItem>
-                    <SelectItem value="stipend_topup">Stipend top-up</SelectItem>
-                    <SelectItem value="stipend_topup_fasttrack">Stipend top-up + Fast-track</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={addTier} size="sm">
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      {/* Stipend Protection removed — managed in Working Capital Bank */}
-
-       {/* Stipend Protection */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Stipend Protection Thresholds</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Controls how much of team stipends are paid based on revenue coverage of payroll. Auto-scales with team size — no MWK amounts to maintain.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {(() => {
-            const totalStipends = (state.members || []).filter((m: any) => m.isActive).reduce((s: number, m: any) => s + (m.stipend || 0), 0);
-            // Auto-migrate display values: prefer new fields, derive from legacy MWK if needed
-            const sp: any = settings.stipendProtection || {};
-            const fullPct = sp.fullCoverageMultiplier ?? (sp.fullThreshold !== undefined && totalStipends > 0
-              ? Math.round((sp.fullThreshold / totalStipends) * 100) : 100);
-            const partialPct = sp.partialCoverageMultiplier ?? (sp.partialThreshold !== undefined && totalStipends > 0
-              ? Math.round((sp.partialThreshold / totalStipends) * 100) : 70);
-            const sym = settings.currencySymbol || 'MK';
-            const fullAmt = Math.round(totalStipends * fullPct / 100);
-            const partialAmt = Math.round(totalStipends * partialPct / 100);
-            return (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Full Payout Coverage (%)</Label>
-                    <Input
-                      type="number" min={0}
-                      value={fullPct}
-                      onChange={(e) => updateSetting('stipendProtection.fullCoverageMultiplier', parseInt(e.target.value) || 0)}
-                      className="bg-secondary border-input"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Revenue ≥ this % of stipends → 100% payout. Currently: <span className="text-foreground">{sym} {fullAmt.toLocaleString()}</span>
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Partial Payout Coverage (%)</Label>
-                    <Input
-                      type="number" min={0}
-                      value={partialPct}
-                      onChange={(e) => updateSetting('stipendProtection.partialCoverageMultiplier', parseInt(e.target.value) || 0)}
-                      className="bg-secondary border-input"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Revenue ≥ this % of stipends → partial payout. Currently: <span className="text-foreground">{sym} {partialAmt.toLocaleString()}</span>
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Between Thresholds Rate (%)</Label>
-                    <Input
-                      type="number"
-                      min={0} max={100}
-                      value={settings.stipendProtection.betweenThresholdRate}
-                      onChange={(e) => updateSetting('stipendProtection.betweenThresholdRate', parseInt(e.target.value) || 0)}
-                      className="bg-secondary border-input"
-                    />
-                    <p className="text-xs text-muted-foreground">% of obligation paid when between the two thresholds.</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Below Threshold Rate (%)</Label>
-                    <Input
-                      type="number"
-                      min={0} max={100}
-                      value={settings.stipendProtection.belowThresholdRate}
-                      onChange={(e) => updateSetting('stipendProtection.belowThresholdRate', parseInt(e.target.value) || 0)}
-                      className="bg-secondary border-input"
-                    />
-                    <p className="text-xs text-muted-foreground">% of obligation paid when revenue is below the partial threshold.</p>
-                  </div>
-                </div>
-                <div className="p-3 bg-secondary/30 rounded-lg text-xs text-muted-foreground space-y-1">
-                  <div>
-                    <span className="text-foreground font-medium">Live preview:</span> total active stipends = <span className="text-foreground">{sym} {totalStipends.toLocaleString()}</span>
-                  </div>
-                  {totalStipends === 0 ? (
-                    <div className="text-amber-400">No active stipends — protection rule is currently dormant.</div>
-                  ) : (
-                    <div>
-                      Full ≥ <span className="text-foreground">{sym} {fullAmt.toLocaleString()}</span> ({fullPct}% coverage) → 100% ·
-                      Partial ≥ <span className="text-foreground">{sym} {partialAmt.toLocaleString()}</span> ({partialPct}% coverage) → {settings.stipendProtection.betweenThresholdRate}% ·
-                      Below → {settings.stipendProtection.belowThresholdRate}%
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
-        </CardContent>
-      </Card>
-
       {/* Working Capital Settings */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">Working Capital Bank</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Controls for your operations account — month-end auto-transfer from Company Fund.
+            Controls for your operations account — month-end auto-transfer from Retained Profit.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Month-end Auto Transfer % of Company Fund</Label>
+            <Label>Month-end Auto Transfer % of Retained Profit</Label>
             <Input
               type="number"
               min={0} max={100}
@@ -605,7 +233,7 @@ export function Settings() {
               onChange={(e) => updateSetting('workingCapital.autoTransferPercent', parseInt(e.target.value) || 0)}
               className="bg-secondary border-input md:max-w-xs"
             />
-            <p className="text-xs text-muted-foreground">Within last 3 days of each month, system prompts to transfer this % of <em>this month's</em> confirmed company fund into WC. 0 = disabled.</p>
+            <p className="text-xs text-muted-foreground">Within last 3 days of each month, system prompts to transfer this % of <em>this month's</em> retained profit into WC. 0 = disabled.</p>
           </div>
           <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
             <div>
@@ -739,21 +367,13 @@ export function Settings() {
       <div className="sticky bottom-4 z-10">
         <div className="bg-card border border-border rounded-lg shadow-lg p-4 flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            {isValid ? (
-              <span className="flex items-center gap-2 text-primary">
-                <Check className="w-4 h-4" />
-                All settings valid
-              </span>
-            ) : (
-              <span className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="w-4 h-4" />
-                Fix validation errors before saving
-              </span>
-            )}
+            <span className="flex items-center gap-2 text-primary">
+              <Check className="w-4 h-4" />
+              Changes are saved to this browser
+            </span>
           </div>
           <Button 
             onClick={saveSettings}
-            disabled={!isValid}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
             size="lg"
           >

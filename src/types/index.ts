@@ -3,7 +3,7 @@
 
 export type EmploymentType = 'Founder' | 'Full-time' | 'Part-time' | 'Contract';
 export type WorkType = 'client' | 'internal' | 'impression';
-export type ViewType = 'dashboard' | 'calculator' | 'tasks' | 'worklog' | 'commitment' | 'summary' | 'capital' | 'team' | 'settings' | 'billing';
+export type ViewType = 'dashboard' | 'summary' | 'capital' | 'settings' | 'billing';
 export type WCCategory =
   // Inflows
   | 'client_payment'
