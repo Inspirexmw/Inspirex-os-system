@@ -1,3 +1,4 @@
+import { monthProfit } from '@/lib/profit';
 import { useState, useMemo, useCallback } from 'react';
 import { Plus, Download, Wallet, ArrowUpRight, ArrowDownRight,
          TrendingUp, Edit2, Trash2, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
@@ -25,7 +26,6 @@ const INFLOW_CATS: { value: WCCategory; label: string }[] = [
 const OUTFLOW_CATS: { value: WCCategory; label: string }[] = [
     { value: 'bill',            label: '🧾 Bill / Utility / Internet' },
   { value: 'subscription',    label: '💻 Subscription (monthly)' },
-  { value: 'project_expense', label: '📦 Project Expense' },
   { value: 'transport',       label: '🚗 Transport / Travel' },
   { value: 'marketing',       label: '📣 Marketing / Promotions' },
   { value: 'equipment',       label: '🖥 Equipment Purchase' },
@@ -120,9 +120,7 @@ export function WorkingCapital() {
   const autoTransferPending = daysUntilMonthEnd <= 2 && autoTransferEnabled && autoTransferPercent > 0 && lastHandled !== currentMonth;
   // Derive confirmed status from billing data directly — fixes stale paymentStatus in localStorage
   // Retained profit earned this month = every payment routed to Retained Profit (100%)
-  const monthRetainedFund = wcTransactions
-    .filter(t => t.category === 'client_to_retained' && t.date.startsWith(currentMonth))
-    .reduce((s, t) => s + t.amount, 0);
+  const monthRetainedFund = Math.max(0, monthProfit(state, currentMonth));
   const suggestedTransfer = Math.round(monthRetainedFund * autoTransferPercent / 100);
 
   const handleAutoTransferApprove = () => {

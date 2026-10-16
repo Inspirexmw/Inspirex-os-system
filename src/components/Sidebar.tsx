@@ -1,3 +1,4 @@
+import { monthProfit } from '@/lib/profit';
 import {
   LayoutDashboard,
   BarChart3,
@@ -247,9 +248,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
     if (daysLeft <= 2 && autoEnabled && autoPercent > 0 && lastHandled !== currentMonth) {
       const hasTransferNotif = existing.some(n => n.type === 'auto_transfer' && n.actionData?.month === currentMonth && !n.dismissed);
       if (!hasTransferNotif) {
-        const fund = (state.wcTransactions || [])
-          .filter((t: any) => t.category === 'client_to_retained' && t.date?.startsWith(currentMonth))
-          .reduce((s: number, t: any) => s + t.amount, 0);
+        const fund = Math.max(0, monthProfit(state, currentMonth));
         const amount = Math.round(fund * autoPercent / 100);
         if (amount > 0) {
           dispatch({ type: 'ADD_NOTIFICATION', payload: {
@@ -309,7 +308,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
         }});
       }
     }
-  }, [state.wcTransactions, state.billing?.documents, state.lastAutoTransferMonth]);
+  }, [state, state.wcTransactions, state.billing?.documents, state.lastAutoTransferMonth]);
 
   const handleApproveTransfer = (n: any) => {
     const { amount, month } = n.actionData;

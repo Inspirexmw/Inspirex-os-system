@@ -164,7 +164,7 @@ export function MonthlySummary() {
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground uppercase">Received</div>
                 <div className="text-xl font-semibold mt-1 text-primary">{formatCurrency(received)}</div>
-                <div className="text-xs text-muted-foreground mt-1">100% to Retained Profit</div>
+                <div className="text-xs text-muted-foreground mt-1">Before project costs</div>
               </CardContent>
             </Card>
             <Card className="bg-card border-border">
@@ -183,9 +183,9 @@ export function MonthlySummary() {
             </Card>
             <Card className="bg-card border-border">
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground uppercase">Received − Costs</div>
+                <div className="text-xs text-muted-foreground uppercase">Profit</div>
                 <div className={`text-xl font-semibold mt-1 ${afterCosts < 0 ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(afterCosts)}</div>
-                <div className="text-xs text-muted-foreground mt-1">For reference only</div>
+                <div className="text-xs text-muted-foreground mt-1">Received minus project costs</div>
               </CardContent>
             </Card>
           </div>

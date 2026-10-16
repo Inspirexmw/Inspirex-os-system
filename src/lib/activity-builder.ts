@@ -11,7 +11,8 @@ export function buildActivityFeed(state: AppState, limit = 12): ActivityItem[] {
 
   // 1. Billing payments
   for (const doc of state.billing?.documents || []) {
-    if (doc.type !== 'invoice' && doc.type !== 'receipt') continue;
+    // Invoices only: receipts are copies of the same payments and would show each payment twice
+    if (doc.type !== 'invoice') continue;
     const client = (state.billing?.clients || []).find((c: any) => c.id === doc.clientId);
     for (const pmt of doc.payments || []) {
       items.push({
@@ -23,6 +24,19 @@ export function buildActivityFeed(state: AppState, limit = 12): ActivityItem[] {
         at: pmt.date + 'T12:00:00.000Z',
       });
     }
+  }
+
+  // 1b. Project costs (paid from project money, deducted from profit)
+  for (const exp of state.billing?.expenses || []) {
+    if (exp.profitDeduction === undefined) continue; // legacy costs show up through their WC outflow
+    items.push({
+      id: `exp-${exp.id}`,
+      kind: 'expense',
+      title: `Project cost — ${exp.description}`,
+      detail: exp.projectName || undefined,
+      amount: exp.profitDeduction,
+      at: exp.date + 'T12:00:00.000Z',
+    });
   }
 
   // 2. WC outflows (categorize: expenses, transfers)
@@ -82,6 +96,9 @@ export function buildCashFlowSeries(state: AppState, months = 6) {
       if (tx.date > endOfMonth) continue;
       if (tx.category === 'client_to_retained') retainedProfit += tx.amount;
       else if (tx.category === 'profit_to_wc_operations' || tx.category === 'profit_to_wc_capital') retainedProfit -= tx.amount;
+    }
+    for (const exp of state.billing?.expenses || []) {
+      if (exp.profitDeduction !== undefined && exp.date <= endOfMonth) retainedProfit -= exp.profitDeduction;
     }
     retainedProfit = Math.max(0, retainedProfit);
 

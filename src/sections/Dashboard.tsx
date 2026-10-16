@@ -1,3 +1,4 @@
+import { monthProfit } from '@/lib/profit';
 import { useMemo, useState } from 'react';
 import {
   Wallet,
@@ -45,10 +46,8 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     const invoicedIn = (month: string) => billingInvoices
       .filter((inv: any) => (inv.issueDate || '').startsWith(month))
       .reduce((sum: number, inv: any) => sum + inv.total * (inv.exchangeRate || 1), 0);
-    // Retained profit earned in a month = every auto-routed client payment (100%)
-    const retainedIn = (month: string) => (state.wcTransactions || [])
-      .filter((t: any) => t.category === 'client_to_retained' && t.date?.startsWith(month))
-      .reduce((sum: number, t: any) => sum + t.amount, 0);
+    // Profit in a month = client payments received minus project costs
+    const retainedIn = (month: string) => monthProfit(state, month);
 
     const totalReceivedThisMonth = receivedIn(currentMonth);
     const totalInvoicedThisMonth = invoicedIn(currentMonth);
@@ -75,7 +74,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     const autoPct = state.settings.workingCapital?.autoTransferPercent ?? 0;
     const lastHandled = state.lastAutoTransferMonth || '';
     const autoTransferPending = isMonthEnd && autoEnabled && autoPct > 0 && lastHandled !== currentMonth;
-    const suggestedTransfer = Math.round(retainedThisMonth * autoPct / 100);
+    const suggestedTransfer = Math.round(Math.max(0, retainedThisMonth) * autoPct / 100);
 
     return {
       totalReceivedThisMonth, totalInvoicedThisMonth, retainedThisMonth, retainedProfit,
@@ -84,7 +83,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       retainedDelta: pctDelta(retainedThisMonth, retainedIn(prevMonth)),
       autoTransferPending, suggestedTransfer, autoTransferPercent: autoPct,
     };
-  }, [state.billing, state.wcTransactions, state.retainedProfit, state.lastAutoTransferMonth, state.settings.workingCapital, currentMonth]);
+  }, [state, state.billing, state.wcTransactions, state.retainedProfit, state.lastAutoTransferMonth, state.settings.workingCapital, currentMonth]);
 
   // ── CASH FLOW SERIES ──────────────────────────────────────────────
   const cashFlow = useMemo(() => buildCashFlowSeries(state, 6), [state]);
@@ -267,7 +266,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                       </p>
                       <DeltaPill value={metrics.retainedDelta} size="xs" />
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-2">100% of payments received · costs tracked in Billing</p>
+                    <p className="text-[11px] text-muted-foreground mt-2">Payments received minus project costs</p>
                   </CardContent>
                 </Card>
               </motion.div>

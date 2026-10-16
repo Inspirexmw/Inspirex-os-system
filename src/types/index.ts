@@ -677,7 +677,8 @@ export interface Expense {
   category: ExpenseCategory;
   amount: number;
   currency: BillingCurrency;
-  wcTransactionId?: string;  // auto-created WC outflow
+  wcTransactionId?: string;  // auto-created WC outflow (legacy: costs recorded before the project-money rule)
+  profitDeduction?: number;  // MWK taken out of Retained Profit when recorded (project-money rule). Absent on legacy costs.
   createdAt: string;
 }
 

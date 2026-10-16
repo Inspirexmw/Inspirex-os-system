@@ -326,7 +326,7 @@ export function Settings() {
                 <div className="flex-1">
                   <div className="font-medium text-sm text-destructive">Clear All Data</div>
                   <div className="text-xs text-muted-foreground mb-3">
-                    Deletes projects, logs, team data. Settings preserved.
+                    Deletes ALL data: invoices, quotes, receipts, expenses, clients, Working Capital and Retained Profit. Settings preserved.
                   </div>
                   <Dialog open={clearDataDialogOpen} onOpenChange={setClearDataDialogOpen}>
                     <DialogTrigger asChild>
@@ -341,7 +341,8 @@ export function Settings() {
                       </DialogHeader>
                       <div className="space-y-4 mt-4">
                         <p className="text-sm text-muted-foreground">
-                          This will permanently delete all projects, work logs, and team data. 
+                          This will permanently delete everything except your settings: invoices, quotes, receipts,
+                          expenses, clients, Working Capital and Retained Profit. Export a backup first.
                           This action cannot be undone.
                         </p>
                         <div className="flex gap-2">
