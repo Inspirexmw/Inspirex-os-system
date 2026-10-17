@@ -22,6 +22,7 @@ import type {
   TaskProject,
   TaskProjectScore,
   ProjectDistribution,
+  TrashItem,
 } from '@/types';
 import { 
   DEFAULT_SETTINGS, 
@@ -59,6 +60,7 @@ const initialState: AppState = {
   wcTransactions: [],
   wcBalance: 0,
   retainedProfit: 0,
+  trash: [],
   bonusBankBalance: 0,
   bonusBankTransactions: [],
   currentQuarter: getCurrentQuarter(),
@@ -111,6 +113,9 @@ type Action =
   | { type: 'BILLING_ADD_PAYMENT'; payload: { documentId: string; payment: BillingPayment } }
   | { type: 'SYNC_PROJECT_PAYMENT_STATUS'; payload: { projectId: string; paidAmount: number; status: 'projected' | 'partial' | 'confirmed' } }
   | { type: 'ADD_RETAINED_PROFIT'; payload: number }
+  | { type: 'TRASH_ADD'; payload: TrashItem }
+  | { type: 'TRASH_REMOVE'; payload: string }
+  | { type: 'TRASH_CLEAR' }
   | { type: 'MARK_AUTO_TRANSFER_HANDLED'; payload: string }
   | { type: 'ADD_NOTIFICATION'; payload: AppNotification }
   | { type: 'DISMISS_NOTIFICATION'; payload: string }
@@ -613,6 +618,12 @@ function appReducer(state: AppState, action: Action): AppState {
         },
       };
     }
+    case 'TRASH_ADD':
+      return { ...state, trash: [action.payload, ...(state.trash || [])] };
+    case 'TRASH_REMOVE':
+      return { ...state, trash: (state.trash || []).filter(t => t.id !== action.payload) };
+    case 'TRASH_CLEAR':
+      return { ...state, trash: [] };
     case 'ADD_RETAINED_PROFIT':
       return { ...state, retainedProfit: state.retainedProfit + action.payload };
     case 'MARK_AUTO_TRANSFER_HANDLED':

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { AnimatedNumber } from '@/components/ui/animated-number';
 import { DeltaPill } from '@/components/ui/delta-pill';
+import { Figure } from '@/components/ui/figure';
 
 interface StatCardProps {
   title: string;
@@ -48,24 +49,26 @@ export function StatCard({
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">
               {title}
             </p>
-            {Icon && (
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                accent ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
-              }`}>
-                <Icon className="w-3.5 h-3.5" />
-              </div>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {delta !== undefined && <DeltaPill value={delta ?? null} invert={deltaInvert} size="xs" />}
+              {Icon && (
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                  accent ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+                }`}>
+                  <Icon className="w-3.5 h-3.5" />
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Value + delta on the same line */}
-          <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
-            <p className={`text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
-              {numericValue !== undefined ? (
-                <AnimatedNumber value={numericValue} format={format} />
-              ) : value}
-            </p>
-            {delta !== undefined && (
-              <DeltaPill value={delta ?? null} invert={deltaInvert} size="xs" />
+          {/* Value (shrinks to fit; the change pill sits up beside the title) */}
+          <div className="mt-3 min-w-0">
+            {numericValue !== undefined && format ? (
+              <Figure value={numericValue} format={format} className={accent ? 'text-primary' : 'text-foreground'} />
+            ) : (
+              <p className={`text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap ${accent ? 'text-primary' : 'text-foreground'}`}>
+                {numericValue !== undefined ? <AnimatedNumber value={numericValue} format={format} /> : value}
+              </p>
             )}
           </div>
 

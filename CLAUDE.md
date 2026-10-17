@@ -22,16 +22,16 @@ There is no test runner configured — all validation is type-checking (`tsc -b`
 All application state lives in [`src/hooks/useAppState.tsx`](src/hooks/useAppState.tsx). It is a large (~45 KB) React Context with 100+ action types. Every feature section consumes this context via the `useAppState` hook. There is no external state library (no Redux, Zustand, etc.).
 
 Key state domains:
-- `members` — team profiles, stipends, roles
-- `projects` — revenue splits, bonus distributions
-- `workLog` / `taskProjects` / `commitmentScores` — work tracking and scoring
-- `billingData` — clients, quotes, invoices, receipts, expenses, retainers, recurring, tax
-- `workingCapital` / `bonusBank` — financial ledgers and runway
-- `settings` — company config, revenue split ratios, scoring weights, currency
+- `billing` — clients, quotes, invoices, receipts, expenses (incl. contractor costs), retainers, recurring, tax
+- `wcBalance` / `wcTransactions` — Working Capital ledger
+- `retainedProfit` — accumulated profit: client payments in, project costs out
+- `settings` — company config, currency, working-capital auto-transfer
+
+Legacy domains still exist in the state shape so old saved data and backups keep loading, but no UI uses them any more: `members`, `projects`, `workLog`, `taskProjects`, `commitmentScores`, `bonusBank*`, revenue-split / scoring / stipend settings. Do not build new features on them.
 
 ### Routing
 
-There is no router library. `App.tsx` renders one of the 10 section components based on `currentView` state. The exception is the public `/approval` route, which is handled by checking `window.location.pathname` at startup and rendering `<ApprovalPage>` outside the authenticated shell.
+There is no router library. `App.tsx` renders one of 5 section components based on `currentView` state (`dashboard`, `billing`, `summary`, `capital`, `settings`). The exception is the public approval page, reached via a `#approve/...` URL hash.
 
 ### Section Components
 
@@ -39,16 +39,11 @@ Each section in [`src/sections/`](src/sections/) is a self-contained feature mod
 
 | Section | Purpose |
 |---|---|
-| `Dashboard.tsx` | Stat cards, cash flow chart, activity feed, team rail |
+| `Dashboard.tsx` | Received/invoiced/profit cards, cash flow chart, recent invoices, activity feed |
 | `Billing.tsx` | Full billing lifecycle — quotes to receipts, expenses, tax |
-| `ProjectCalculator.tsx` | Revenue split & bonus distribution per project |
-| `WorkLog.tsx` | Daily task logging with dimension scores |
-| `CommitmentTracker.tsx` | Quarterly commitment scoring & point weighting |
-| `MonthlySummary.tsx` | Stipend coverage status, net company fund |
-| `TasksAndScoring.tsx` | Project-based task assignment & member scoring |
-| `TeamManagement.tsx` | Member profiles, stipends, active status |
-| `Settings.tsx` | Company config, scoring weights, contribution bank tiers |
-| `WorkingCapital.tsx` | WC transactions, balance, and runway calculations |
+| `MonthlySummary.tsx` | Payments received and project costs per month, CSV export |
+| `WorkingCapital.tsx` | WC transactions, balance, transfers from Retained Profit |
+| `Settings.tsx` | Company config, working-capital auto-transfer, data export/import |
 
 ### UI Components
 
@@ -56,10 +51,15 @@ Each section in [`src/sections/`](src/sections/) is a self-contained feature mod
 
 ### Key Business Rules
 
-- **Revenue split:** Company 60% / Bonus Pool 40% (configurable in Settings)
-- **Stipend protection:** Full payout when revenue ≥ stipends; partial (70%) when revenue ≥ 70% of stipends
-- **Billing is source of truth** for cash flow — project revenue flows from paid invoices
-- **No score multipliers or penalties** — scoring is additive only
+- **Every client payment goes 100% to Retained Profit first.** No revenue split, no bonus pool, no scoring, no team stipends.
+- **Project costs come out of the project's money, not Working Capital.** Recording a cost under Billing → Project Costs (contractors, printing, assets, etc.) reduces Retained Profit by that amount (stored on the expense as `profitDeduction`) and creates no Working Capital entry. Editing or deleting the cost reverses it. Profit for a month = payments received − project costs (`src/lib/profit.ts`). Costs recorded before this rule have no `profitDeduction` and keep their old Working Capital outflow.
+- **Deleting reverts everything.** Deleting a payment, a receipt (undoes all payments on it), an invoice (undoes its payments) or a project cost asks for a reason and reverses the invoice status/balance, Working Capital, Retained Profit and the receipt (`reversePayments` in `Billing.tsx`, helpers in `src/lib/payment-reversal.ts`). New Working Capital entries are tagged with `paymentId`; older ones are matched by invoice number, date and amount. A record of each deletion with its reason is added to notifications.
+- **Payments can be edited** (pencil icon beside each payment, reason required): `editPayment` swaps the old Working Capital lines for new ones and updates the invoice, receipt and figures together.
+- **Deleted items go to a trash** (Billing → Deleted items, `state.trash`). Every delete of a payment, receipt, invoice, quote/proforma or project cost stores a snapshot; Restore (or the Undo button on the delete toast) re-applies it via `restoreTrashItem`, which re-writes Working Capital / Retained Profit / the receipt as if it had just been entered.
+- **Dashboard figures auto-fit their cards** (`src/components/ui/figure.tsx`): the font steps down as a number grows and very large amounts switch to short form (MK 12.3B) with the exact value in a tooltip.
+- **Payments open in the invoice's own currency and rate** (USD/ZAR), with a live MWK equivalent; the rate is editable.
+- **Working Capital is for studio overhead only** (subscriptions, transport, bills, equipment, other studio expenses), funded by manual top-ups and month-end transfers from Retained Profit.
+- **Billing is source of truth** for cash flow — payments recorded on invoices create the Working Capital inflow and the transfer to Retained Profit.
 - **Multiple currencies:** MWK (primary), USD, ZAR; exchange rates stored per billing document
 
 ### PDF & Approval

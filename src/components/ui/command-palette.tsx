@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Calculator, FileText, Wallet, Users, Settings, ListChecks,
+  LayoutDashboard, Wallet, Settings,
   Receipt, BarChart3, Search, ArrowRight, CornerDownLeft,
 } from 'lucide-react';
 import type { ViewType } from '@/types';
@@ -29,14 +29,9 @@ export function CommandPalette({ open, onOpenChange, onNavigate }: CommandPalett
 
   const navCommands: PaletteCommand[] = useMemo(() => [
     { id: 'nav-dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Navigate', keywords: 'home overview', run: () => onNavigate('dashboard') },
-    { id: 'nav-calculator', label: 'Project Calculator', icon: Calculator, group: 'Navigate', keywords: 'project new', run: () => onNavigate('calculator') },
-    { id: 'nav-tasks', label: 'Tasks & Scoring', icon: ListChecks, group: 'Navigate', keywords: 'score', run: () => onNavigate('tasks') },
     { id: 'nav-billing', label: 'Billing', icon: Receipt, group: 'Navigate', keywords: 'invoice quote receipt client', run: () => onNavigate('billing') },
     { id: 'nav-summary', label: 'Monthly Summary', icon: BarChart3, group: 'Navigate', keywords: 'report month', run: () => onNavigate('summary') },
-    { id: 'nav-capital', label: 'Working Capital', icon: Wallet, group: 'Navigate', keywords: 'wc bank cash bonus stipend', run: () => onNavigate('capital') },
-    { id: 'nav-worklog', label: 'Work Log', icon: FileText, group: 'Navigate', keywords: 'time entries', run: () => onNavigate('worklog') },
-    { id: 'nav-commitment', label: 'Commitment Tracker', icon: BarChart3, group: 'Navigate', keywords: 'reliability quarter', run: () => onNavigate('commitment') },
-    { id: 'nav-team', label: 'Team Management', icon: Users, group: 'Navigate', keywords: 'members add', run: () => onNavigate('team') },
+    { id: 'nav-capital', label: 'Working Capital', icon: Wallet, group: 'Navigate', keywords: 'wc bank cash retained', run: () => onNavigate('capital') },
     { id: 'nav-settings', label: 'Settings', icon: Settings, group: 'Navigate', keywords: 'config preferences', run: () => onNavigate('settings') },
   ], [onNavigate]);
 

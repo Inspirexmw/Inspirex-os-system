@@ -1,6 +1,7 @@
+import { monthProfit } from '@/lib/profit';
 import { useState, useMemo, useCallback } from 'react';
 import { Plus, Download, Wallet, ArrowUpRight, ArrowDownRight,
-         TrendingUp, Edit2, Trash2, Check, X, Users, ChevronDown, ChevronRight, Shield } from 'lucide-react';
+         TrendingUp, Edit2, Trash2, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,23 +11,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { useApp } from '@/hooks/useAppState';
 import { useToast } from '@/hooks/use-toast';
-import type { WCTransaction, WCCategory, BonusBankTransaction, AppNotification } from '@/types';
+import type { WCTransaction, WCCategory, AppNotification } from '@/types';
 
 // ─── Category Config ──────────────────────────────────────────────────────────
 
 const INFLOW_CATS: { value: WCCategory; label: string }[] = [
   { value: 'client_payment',          label: '💼 Client Payment' },
-  { value: 'profit_to_wc_operations', label: '🔄 From Company Fund — Operations' },
-  { value: 'profit_to_wc_capital',    label: '📈 From Company Fund — Capital Investment' },
+  { value: 'profit_to_wc_operations', label: '🔄 From Retained Profit — Operations' },
+  { value: 'profit_to_wc_capital',    label: '📈 From Retained Profit — Capital Investment' },
   { value: 'manual_topup',            label: '💰 Manual Top-up' },
   { value: 'other',                   label: '📝 Other Inflow' },
 ];
 
 const OUTFLOW_CATS: { value: WCCategory; label: string }[] = [
-  { value: 'salary',          label: '👤 Salary / Stipend' },
-  { value: 'bill',            label: '🧾 Bill / Utility / Internet' },
+    { value: 'bill',            label: '🧾 Bill / Utility / Internet' },
   { value: 'subscription',    label: '💻 Subscription (monthly)' },
-  { value: 'project_expense', label: '📦 Project Expense' },
   { value: 'transport',       label: '🚗 Transport / Travel' },
   { value: 'marketing',       label: '📣 Marketing / Promotions' },
   { value: 'equipment',       label: '🖥 Equipment Purchase' },
@@ -81,9 +80,8 @@ const CAT_COLOR: Partial<Record<WCCategory, string>> = {
 };
 
 export function WorkingCapital() {
-  const { state, dispatch, formatCurrency, getActiveMembers, getContributionBankReward } = useApp();
+  const { state, dispatch, formatCurrency } = useApp();
   const { toast } = useToast();
-  const activeMembers = getActiveMembers();
 
   // Form state
   const [txType, setTxType] = useState<'inflow' | 'outflow'>('inflow');
@@ -106,18 +104,11 @@ export function WorkingCapital() {
   const [pendingDeleteTx, setPendingDeleteTx] = useState<WCTransaction | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
 
-  // Pay stipends panel
-  const [showStipendPanel, setShowStipendPanel] = useState(false);
-  const [stipendAmounts, setStipendAmounts] = useState<Record<string, string>>({});
-
-  // Bonus Bank panel
-
   const currentMonth = new Date().toISOString().slice(0, 7);
   const wcBalance = state.wcBalance || 0;
   const wcTransactions = state.wcTransactions || [];
   const retainedProfit = state.retainedProfit || 0;
   const bonusBankBalance = state.bonusBankBalance || 0;
-  const bonusBankTransactions = state.bonusBankTransactions || [];
 
   // Month-end auto-transfer prompt
   const today = new Date();
@@ -128,22 +119,9 @@ export function WorkingCapital() {
   const lastHandled = state.lastAutoTransferMonth || '';
   const autoTransferPending = daysUntilMonthEnd <= 2 && autoTransferEnabled && autoTransferPercent > 0 && lastHandled !== currentMonth;
   // Derive confirmed status from billing data directly — fixes stale paymentStatus in localStorage
-  const confirmedProjectIds = useMemo(() => {
-    const ids = new Set<string>();
-    state.projects.forEach((p: any) => {
-      if (p.paymentStatus === 'confirmed') { ids.add(p.id); return; }
-      if (!p.billingInvoiceId) return;
-      const inv = (state.billing.documents || []).find((d: any) => d.id === p.billingInvoiceId);
-      if (!inv) return;
-      const totalPaid = (inv.payments || []).reduce((s: number, pay: any) => s + (pay.mwkEquivalent || pay.amount || 0), 0);
-      if (totalPaid >= inv.total * (inv.exchangeRate || 1)) ids.add(p.id);
-    });
-    return ids;
-  }, [state.projects, state.billing.documents]);
-
-  const confirmedMonthProjects = state.projects.filter(p => p.month === currentMonth && p.type === 'client' && confirmedProjectIds.has(p.id));
-  const monthCompanyFund = confirmedMonthProjects.reduce((s, p) => s + p.companyContribution, 0);
-  const suggestedTransfer = Math.round(monthCompanyFund * autoTransferPercent / 100);
+  // Retained profit earned this month = every payment routed to Retained Profit (100%)
+  const monthRetainedFund = Math.max(0, monthProfit(state, currentMonth));
+  const suggestedTransfer = Math.round(monthRetainedFund * autoTransferPercent / 100);
 
   const handleAutoTransferApprove = () => {
     if (suggestedTransfer <= 0) return;
@@ -154,7 +132,7 @@ export function WorkingCapital() {
       type: 'inflow',
       category: 'profit_to_wc_operations',
       amount: suggestedTransfer,
-      description: 'Month-end auto-transfer — ' + autoTransferPercent + '% of company fund',
+      description: 'Month-end auto-transfer — ' + autoTransferPercent + '% of retained profit',
       balanceAfter: newBalance,
       autoGenerated: true,
     }});
@@ -190,69 +168,32 @@ export function WorkingCapital() {
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [wcTransactions, filterMonth, filterCat]);
 
-  // Bonus Bank transactions filtered by the same month/category controls
-  const filteredBbTxs = useMemo(() => {
-    return bonusBankTransactions.filter(t => {
-      if (filterMonth !== 'all-months' && !t.date.startsWith(filterMonth)) return false;
-      // Category filter is WC-specific; when a specific WC category is selected, hide BB rows.
-      if (filterCat !== 'all') return false;
-      return true;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [bonusBankTransactions, filterMonth, filterCat]);
-
-  // Combined ledger: WC + BB merged chronologically; payroll & bonus_payout grouped by month
+  // Ledger: WC transactions only; historical payroll rows are grouped by month
   const groupedLedgerRows = useMemo(() => {
     type LedgerRow =
       | { kind: 'tx'; tx: WCTransaction }
-      | { kind: 'bb-tx'; tx: BonusBankTransaction }
-      | { kind: 'payroll-group'; month: string; txs: WCTransaction[]; total: number; balanceAfter: number }
-      | { kind: 'bb-payout-group'; month: string; txs: BonusBankTransaction[]; total: number; balanceAfter: number };
-
-    type Merged = { date: string; account: 'wc' | 'bb'; wc?: WCTransaction; bb?: BonusBankTransaction };
-    const merged: Merged[] = [
-      ...filteredTxs.map(tx => ({ date: tx.date, account: 'wc' as const, wc: tx })),
-      ...filteredBbTxs.map(tx => ({ date: tx.date, account: 'bb' as const, bb: tx })),
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      | { kind: 'payroll-group'; month: string; txs: WCTransaction[]; total: number; balanceAfter: number };
 
     const rows: LedgerRow[] = [];
     const seenPayrollMonths = new Set<string>();
-    const seenBbPayoutMonths = new Set<string>();
 
-    for (const m of merged) {
-      if (m.account === 'wc' && m.wc) {
-        const tx = m.wc;
-        if (tx.category === 'payroll') {
-          const month = tx.date.slice(0, 7);
-          if (!seenPayrollMonths.has(month)) {
-            seenPayrollMonths.add(month);
-            const monthPayrolls = filteredTxs.filter(t => t.category === 'payroll' && t.date.startsWith(month));
-            const total = monthPayrolls.reduce((s, t) => s + t.amount, 0);
-            const sorted = [...monthPayrolls].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            const balanceAfter = sorted[sorted.length - 1].balanceAfter;
-            rows.push({ kind: 'payroll-group', month, txs: monthPayrolls, total, balanceAfter });
-          }
-        } else {
-          rows.push({ kind: 'tx', tx });
+    for (const tx of filteredTxs) {
+      if (tx.category === 'payroll') {
+        const month = tx.date.slice(0, 7);
+        if (!seenPayrollMonths.has(month)) {
+          seenPayrollMonths.add(month);
+          const monthPayrolls = filteredTxs.filter(t => t.category === 'payroll' && t.date.startsWith(month));
+          const total = monthPayrolls.reduce((s, t) => s + t.amount, 0);
+          const sorted = [...monthPayrolls].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const balanceAfter = sorted[sorted.length - 1].balanceAfter;
+          rows.push({ kind: 'payroll-group', month, txs: monthPayrolls, total, balanceAfter });
         }
-      } else if (m.account === 'bb' && m.bb) {
-        const tx = m.bb;
-        if (tx.category === 'bonus_payout') {
-          const month = tx.date.slice(0, 7);
-          if (!seenBbPayoutMonths.has(month)) {
-            seenBbPayoutMonths.add(month);
-            const monthPayouts = filteredBbTxs.filter(t => t.category === 'bonus_payout' && t.date.startsWith(month));
-            const total = monthPayouts.reduce((s, t) => s + t.amount, 0);
-            const sorted = [...monthPayouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            const balanceAfter = sorted[sorted.length - 1].balanceAfter;
-            rows.push({ kind: 'bb-payout-group', month, txs: monthPayouts, total, balanceAfter });
-          }
-        } else {
-          rows.push({ kind: 'bb-tx', tx });
-        }
+      } else {
+        rows.push({ kind: 'tx', tx });
       }
     }
     return rows;
-  }, [filteredTxs, filteredBbTxs]);
+  }, [filteredTxs]);
 
   // Expense breakdown
   const expBreakdown = useMemo(() => {
@@ -266,149 +207,6 @@ export function WorkingCapital() {
   const availableMonths = useMemo(() =>
     Array.from(new Set(wcTransactions.map(t => t.date.slice(0, 7)))).sort().reverse(),
   [wcTransactions]);
-
-  // Total deferred
-  const totalDeferred = useMemo(() =>
-    activeMembers.reduce((s, m) => s + (m.deferredStipendBalance || 0), 0),
-  [activeMembers]);
-
-  // Stipend Protection — coverage-ratio thresholds (revenue ÷ stipends)
-  const thresholdStatus = useMemo(() => {
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
-    const confirmedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
-    );
-    const revenue = confirmedProjects.reduce((s, p) => s + (p.revenue || 0), 0);
-    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
-    const protection = state.settings.stipendProtection || {} as any;
-
-    // Skip rule entirely when there are no stipend obligations
-    if (totalStipends === 0) {
-      return {
-        skipped: true, revenue, totalStipends: 0, coverage: 0,
-        rate: 100, status: 'full' as const,
-        fullMultiplier: 0, partialMultiplier: 0, fullThresholdAmount: 0, partialThresholdAmount: 0,
-        betweenRate: 70, belowRate: 50,
-      };
-    }
-
-    // Resolve coverage multipliers — auto-migrate from legacy MWK thresholds if present
-    const fullMultiplier = protection.fullCoverageMultiplier !== undefined
-      ? protection.fullCoverageMultiplier
-      : protection.fullThreshold !== undefined
-      ? Math.round((protection.fullThreshold / totalStipends) * 100)
-      : 100;
-    const partialMultiplier = protection.partialCoverageMultiplier !== undefined
-      ? protection.partialCoverageMultiplier
-      : protection.partialThreshold !== undefined
-      ? Math.round((protection.partialThreshold / totalStipends) * 100)
-      : 70;
-
-    const fullThresholdAmount = totalStipends * (fullMultiplier / 100);
-    const partialThresholdAmount = totalStipends * (partialMultiplier / 100);
-    const coverage = totalStipends > 0 ? Math.round((revenue / totalStipends) * 100) : 0;
-    const betweenRate = protection.betweenThresholdRate ?? 70;
-    const belowRate = protection.belowThresholdRate ?? 50;
-
-    let rate = 100;
-    let status: 'full' | 'partial_between' | 'partial_below' = 'full';
-    if (revenue >= fullThresholdAmount) {
-      rate = 100; status = 'full';
-    } else if (revenue >= partialThresholdAmount) {
-      rate = betweenRate; status = 'partial_between';
-    } else {
-      rate = belowRate; status = 'partial_below';
-    }
-    return {
-      skipped: false, revenue, totalStipends, coverage,
-      rate, status,
-      fullMultiplier, partialMultiplier, fullThresholdAmount, partialThresholdAmount,
-      betweenRate, belowRate,
-    };
-  }, [state.projects, state.settings.stipendProtection, confirmedProjectIds, activeMembers]);
-
-  // Init stipend amounts when panel opens — pre-fills using Stipend Protection rate
-  const openStipendPanel = useCallback(() => {
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
-    const confirmedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
-    );
-    const initial: Record<string, string> = {};
-    activeMembers.forEach(m => {
-      const hasConfirmedBonus = confirmedProjects.some(p =>
-        p.distribution.find(d => d.memberId === m.id && d.finalBonus > 0)
-      );
-      if (m.stipend > 0 || hasConfirmedBonus) {
-        const obligation = m.stipend + (m.deferredStipendBalance || 0);
-        const payAmount = Math.round(obligation * thresholdStatus.rate / 100);
-        initial[m.id] = String(payAmount);
-      }
-    });
-    setStipendAmounts(initial);
-    setShowStipendPanel(true);
-  }, [activeMembers, state.projects, confirmedProjectIds, thresholdStatus]);
-
-  const totalPaying = useMemo(() =>
-    Object.values(stipendAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0),
-  [stipendAmounts]);
-
-  const totalBonusesPreview = useMemo(() => {
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
-    // Only CONFIRMED — projected bonuses not payable yet
-    const confirmedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
-    );
-    const raw = activeMembers.reduce((sum, m) => {
-      const bonus = confirmedProjects.reduce((s, p) => {
-        const dist = p.distribution.find(d => d.memberId === m.id);
-        return s + (dist?.finalBonus || 0);
-      }, 0);
-      return sum + Math.round(bonus);
-    }, 0);
-    // Cap at Bonus Bank balance if drift ≤ active members count (rounding artifact)
-    const drift = raw - bonusBankBalance;
-    if (drift > 0 && drift <= activeMembers.length) return bonusBankBalance;
-    return raw;
-  }, [activeMembers, state.projects, confirmedProjectIds, bonusBankBalance]);
-
-  // Projected bonuses — visible but NOT payable
-  const totalProjectedBonuses = useMemo(() => {
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
-    const projectedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && !confirmedProjectIds.has(p.id)
-    );
-    return activeMembers.reduce((sum, m) => {
-      const bonus = projectedProjects.reduce((s, p) => {
-        const dist = p.distribution.find(d => d.memberId === m.id);
-        return s + (dist?.finalBonus || 0);
-      }, 0);
-      return sum + Math.round(bonus);
-    }, 0);
-  }, [activeMembers, state.projects, confirmedProjectIds]);
-
-  // Quarter-end detection: March(2), June(5), September(8), December(11)
-  const isQuarterEnd = useMemo(() => {
-    const month = new Date().getMonth();
-    return [2, 5, 8, 11].includes(month);
-  }, []);
-
-  // Per-member contribution bank rewards (only shown/paid on quarter-end months)
-  const memberBankRewards = useMemo(() => {
-    if (!isQuarterEnd) return {} as Record<string, number>;
-    const rewards: Record<string, number> = {};
-    activeMembers.forEach(m => {
-      const points = m.contributionBank.currentQuarterPoints;
-      const tiers = state.settings.contributionBank.tiers;
-      const tier = tiers.find(t => points >= t.minPoints && points <= t.maxPoints);
-      const reward = tier && tier.rewardPercent > 0 ? Math.round(m.stipend * tier.rewardPercent / 100) : 0;
-      if (reward > 0) rewards[m.id] = reward;
-    });
-    return rewards;
-  }, [isQuarterEnd, activeMembers, state.settings.contributionBank.tiers]);
-
-  const totalBankRewards = useMemo(() =>
-    Object.values(memberBankRewards).reduce((s, v) => s + v, 0),
-  [memberBankRewards]);
 
   // Add transaction
   const addTransaction = useCallback(() => {
@@ -439,188 +237,11 @@ export function WorkingCapital() {
     });
   }, [txType, txCat, txAmount, txDesc, txDate, txAsset, wcBalance, dispatch, toast, formatCurrency, isCapital]);
 
-  // Pay stipends (WC) + bonuses (Bonus Bank) — separated sources
-  const payStipends = useCallback(() => {
-    const stipendEntries = Object.entries(stipendAmounts).filter(([, v]) => parseFloat(v) > 0);
-
-    // Detect quarter-end month (March=2, June=5, September=8, December=11)
-    const now = new Date();
-    const isQuarterEnd = [2, 5, 8, 11].includes(now.getMonth());
-
-    // Calculate project bonuses — CONFIRMED ONLY (projected not payable)
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
-    const confirmedProjects = state.projects.filter(p =>
-      p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id)
-    );
-    const memberBonuses: Record<string, number> = {};
-    activeMembers.forEach(m => {
-      let bonus = 0;
-      confirmedProjects.forEach(p => {
-        const dist = p.distribution.find(d => d.memberId === m.id);
-        if (dist) bonus += dist.finalBonus;
-      });
-      if (bonus > 0) memberBonuses[m.id] = Math.round(bonus);
-    });
-
-    // Rounding-drift backstop: if total bonus distribution drifts a tiny amount past Bonus Bank
-    // (Math.round on each member can drift the sum by ±N), absorb the diff into the largest share.
-    const memberIds = Object.keys(memberBonuses);
-    const bonusSum = memberIds.reduce((s, id) => s + memberBonuses[id], 0);
-    const drift = bonusSum - bonusBankBalance;
-    if (drift > 0 && drift <= memberIds.length && memberIds.length > 0) {
-      const largestId = memberIds.reduce((max, id) =>
-        memberBonuses[id] > memberBonuses[max] ? id : max, memberIds[0]);
-      memberBonuses[largestId] -= drift;
-    }
-
-    // Calculate contribution bank rewards if quarter end
-    const memberBankRewards: Record<string, number> = {};
-    if (isQuarterEnd) {
-      activeMembers.forEach(m => {
-        const reward = getContributionBankReward(m.id);
-        if (reward.rewardAmount > 0) memberBankRewards[m.id] = Math.round(reward.rewardAmount);
-      });
-    }
-
-    // Include bonus-only members (stipend=0 but have confirmed bonus)
-    const bonusOnlyEntries: [string, string][] = activeMembers
-      .filter(m => !stipendEntries.find(([id]) => id === m.id) && (memberBonuses[m.id] || 0) > 0)
-      .map(m => [m.id, '0']);
-    const entries = [...stipendEntries, ...bonusOnlyEntries];
-
-    if (!entries.length && Object.keys(memberBonuses).length === 0) {
-      toast({ title: 'No amounts entered', variant: 'destructive' }); return;
-    }
-
-    const totalBonuses = Object.values(memberBonuses).reduce((s, v) => s + v, 0);
-    const totalBankRewards = Object.values(memberBankRewards).reduce((s, v) => s + v, 0);
-    // Stipends + Q-Rewards leave WC physically; Bonuses leave Bonus Bank physically
-    const wcRequired = totalPaying + totalBankRewards;
-    const bbRequired = totalBonuses;
-
-    if (wcRequired > wcBalance) {
-      toast({ title: 'Insufficient WC balance', description: `Need ${formatCurrency(wcRequired)} for stipends${totalBankRewards > 0 ? ' + Q-rewards' : ''}, have ${formatCurrency(wcBalance)}. Top up or transfer from Company Fund.`, variant: 'destructive' });
-      return;
-    }
-    if (bbRequired > bonusBankBalance) {
-      toast({ title: 'Insufficient Bonus Bank balance', description: `Need ${formatCurrency(bbRequired)} for bonuses, only ${formatCurrency(bonusBankBalance)} available. Confirm more billing payments to grow the Bonus Bank.`, variant: 'destructive' });
-      return;
-    }
-
-    const monthLabel = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-    const today = new Date().toISOString().slice(0, 10);
-    let runningWCBalance = wcBalance;
-    let runningBBBalance = bonusBankBalance;
-
-    entries.forEach(([memberId, amtStr], i) => {
-      const stipendAmount = parseFloat(amtStr) || 0;
-      const bonus = memberBonuses[memberId] || 0;
-      const bankReward = memberBankRewards[memberId] || 0;
-      const wcPayout = stipendAmount + bankReward;
-      const member = activeMembers.find(m => m.id === memberId);
-
-      // WC outflow: stipend + Q-reward only (bonuses don't touch WC — separate physical account)
-      if (wcPayout > 0) {
-        runningWCBalance -= wcPayout;
-        const breakdown = [
-          stipendAmount > 0 ? `Stipend: ${stipendAmount.toLocaleString()}` : null,
-          bankReward > 0 ? `Q-Reward: ${bankReward.toLocaleString()}` : null,
-        ].filter(Boolean).join(' · ');
-        const txPayroll: WCTransaction = {
-          id: `pay-${memberId}-${Date.now() + i}`,
-          date: today,
-          type: 'outflow',
-          category: 'payroll',
-          amount: wcPayout,
-          description: `${member?.name} — ${monthLabel} (${breakdown})`,
-          reference: memberId,
-          balanceAfter: runningWCBalance,
-          autoGenerated: true,
-        };
-        dispatch({ type: 'ADD_WC_TRANSACTION', payload: txPayroll });
-        if (stipendAmount > 0) {
-          dispatch({ type: 'PAY_MEMBER_STIPEND', payload: { memberId, amount: stipendAmount, wcTransactionId: txPayroll.id } });
-        }
-      }
-
-      // Bonus Bank outflow: bonus only (cash leaves the Bonus Bank physical account)
-      if (bonus > 0) {
-        runningBBBalance -= bonus;
-        dispatch({ type: 'ADD_BONUS_BANK_TRANSACTION', payload: {
-          id: `bonus-pay-${memberId}-${Date.now() + i + 10000}`,
-          date: today,
-          type: 'debit',
-          category: 'bonus_payout',
-          amount: bonus,
-          description: `${member?.name} — ${monthLabel} bonus`,
-          reference: memberId,
-          balanceAfter: runningBBBalance,
-          autoGenerated: true,
-        }});
-      }
-    });
-
-    // Reset contribution bank points after quarter-end payout
-    if (isQuarterEnd && totalBankRewards > 0) {
-      dispatch({ type: 'RESET_QUARTER_POINTS' });
-    }
-    setShowStipendPanel(false);
-    toast({
-      title: '✓ Payroll complete',
-      description: [
-        totalPaying > 0 ? `${formatCurrency(totalPaying)} stipends from WC` : null,
-        totalBonuses > 0 ? `${formatCurrency(totalBonuses)} bonuses from Bonus Bank` : null,
-        totalBankRewards > 0 ? `${formatCurrency(totalBankRewards)} Q-rewards from WC` : null,
-        `paid to ${entries.length} members`,
-      ].filter(Boolean).join(' + '),
-    });
-
-    // Auto-send email receipts
-    const monthStr = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-    entries.forEach(([memberId, amtStr], i) => {
-      const amount = parseFloat(amtStr);
-      if (!amount) return;
-      const member = activeMembers.find(m => m.id === memberId);
-      if (!member?.email) return;
-      const bonus = memberBonuses[memberId] || 0;
-      const subject = encodeURIComponent(`${state.settings.companyName} — Earnings Receipt · ${monthStr}`);
-      const body = encodeURIComponent(
-        `Hi ${member.name.split(' ')[0]},\n\nYour earnings for ${monthStr} have been processed.\n\nEARNINGS SUMMARY\n───────────────────\nStipend Paid:    ${state.settings.currencySymbol} ${amount.toLocaleString()}\n` +
-        (bonus > 0 ? `Project Bonus:   ${state.settings.currencySymbol} ${bonus.toLocaleString()}\n` : '') +
-        `───────────────────\nTotal:           ${state.settings.currencySymbol} ${(amount + bonus + (memberBankRewards[memberId] || 0)).toLocaleString()}\n\n` +
-        (memberBankRewards[memberId] ? `Q-Bank Reward included: ${state.settings.currencySymbol} ${memberBankRewards[memberId].toLocaleString()}\n` : '') +
-        `InspireX OS · ${state.settings.companyName}`
-      );
-      setTimeout(() => {
-        window.open(`mailto:${member.email}?subject=${subject}&body=${body}`, '_blank');
-      }, 600 + i * 400);
-    });
-  }, [stipendAmounts, totalPaying, wcBalance, bonusBankBalance, activeMembers, state.projects, state.settings, memberBankRewards, totalBankRewards, isQuarterEnd, confirmedProjectIds, dispatch, toast, formatCurrency]);
-
   // Delete transaction
   const deleteTransaction = useCallback((tx: WCTransaction) => {
     setPendingDeleteTx(tx);
     setDeleteReason('');
   }, []);
-
-  // Delete a Bonus Bank transaction (no confirm dialog — uses simple confirm for now)
-  const deleteBbTransaction = useCallback((tx: BonusBankTransaction) => {
-    if (!confirm(`Delete this Bonus Bank entry?\n\n"${tx.description}"\n\nBalance will be recalculated.`)) return;
-    dispatch({ type: 'DELETE_BONUS_BANK_TRANSACTION', payload: tx.id });
-    toast({ title: 'Bonus Bank entry deleted', description: 'Balance recalculated' });
-  }, [dispatch, toast]);
-
-  // Helper: label/color for Bonus Bank categories
-  const bbCatLabel = (c: string) =>
-    c === 'project_allocation' ? '🏦 Bonus Allocation' :
-    c === 'bonus_payout' ? '🏦 Bonus Paid' :
-    c === 'manual_topup' ? '🏦 Top-up' :
-    c === 'transfer_to_wc' ? '🏦 → WC' :
-    c === 'adjustment' ? '🏦 Adjustment' : '🏦 Other';
-  const bbCatColor = (c: string) =>
-    c === 'project_allocation' ? 'text-[#73F764]' :
-    c === 'bonus_payout' ? 'text-blue-400' :
-    'text-muted-foreground';
 
   const confirmDeleteTransaction = useCallback(() => {
     if (!pendingDeleteTx) return;
@@ -662,7 +283,7 @@ export function WorkingCapital() {
 
   const handleTypeChange = (type: 'inflow' | 'outflow') => {
     setTxType(type);
-    setTxCat(type === 'inflow' ? 'client_payment' : 'salary');
+    setTxCat(type === 'inflow' ? 'client_payment' : 'bill');
     setTxAsset('');
   };
 
@@ -688,7 +309,7 @@ export function WorkingCapital() {
             <div>
               <div className="text-sm font-medium text-blue-400">Month-end transfer ready</div>
               <div className="text-sm text-muted-foreground mt-0.5">
-                {autoTransferPercent}% of this month's confirmed company fund — <span className="text-foreground font-medium">{formatCurrency(suggestedTransfer)}</span> available to transfer to Working Capital to fund stipends and operations.
+                {autoTransferPercent}% of this month's retained profit — <span className="text-foreground font-medium">{formatCurrency(suggestedTransfer)}</span> available to transfer to Working Capital to fund stipends and operations.
               </div>
               <div className="text-xs text-muted-foreground mt-1">
                 Retained Profit available: {formatCurrency(retainedProfit)} · WC balance after transfer: {formatCurrency(wcBalance + suggestedTransfer)}
@@ -714,8 +335,19 @@ export function WorkingCapital() {
         </div>
       )}
 
+      {/* Legacy Bonus Bank balance — kept for reference, no longer fed by new payments */}
+      {bonusBankBalance > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg text-sm text-muted-foreground">
+          <span className="text-base leading-none mt-0.5">🏦</span>
+          <span>
+            Legacy Bonus Bank balance from earlier 60/40 payments: <strong className="text-foreground">{formatCurrency(bonusBankBalance)}</strong>.
+            New payments no longer add to it. Every payment now goes 100% to Retained Profit.
+          </span>
+        </div>
+      )}
+
       {/* Balance cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="bg-card border border-primary/30">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-1">
@@ -725,19 +357,6 @@ export function WorkingCapital() {
             <div className="text-2xl font-bold text-primary">
               {formatCurrency(wcBalance)}
             </div>
-            {totalDeferred > 0 && (
-              <div className="text-xs text-red-400 mt-1">Deferred: {formatCurrency(totalDeferred)}</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-[#73F764]/30">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm">🏦</span>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Bonus Bank</div>
-            </div>
-            <div className="text-2xl font-bold text-[#73F764]">{formatCurrency(bonusBankBalance)}</div>
-            <div className="text-xs text-muted-foreground mt-1">Earmarked from WC for bonuses</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -757,7 +376,7 @@ export function WorkingCapital() {
               <div className="text-xs text-muted-foreground uppercase">Month Out</div>
             </div>
             <div className="text-xl font-semibold text-red-400">{formatCurrency(stats.outflows)}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Salaries: {formatCurrency(stats.salaries)}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Payroll: {formatCurrency(stats.salaries)}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -771,283 +390,6 @@ export function WorkingCapital() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Stipend Coverage — planning panel */}
-      {(() => {
-        const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
-        if (totalStipends === 0) return null;
-        const coveragePct = totalStipends > 0 ? Math.min(100, Math.round((wcBalance / totalStipends) * 100)) : 0;
-        const runway = totalStipends > 0 ? Math.floor(wcBalance / totalStipends) : 0;
-        const buffer = wcBalance - totalStipends;
-        const amber = state.settings.workingCapital?.runwayAmberThreshold ?? 6;
-        const red = state.settings.workingCapital?.runwayRedThreshold ?? 3;
-        const tone = wcBalance < totalStipends ? 'red' : runway < red ? 'red' : runway < amber ? 'amber' : 'green';
-        const toneClasses = tone === 'red'
-          ? { border: 'border-destructive/40', text: 'text-destructive', bg: 'bg-destructive/5' }
-          : tone === 'amber'
-          ? { border: 'border-amber-500/40', text: 'text-amber-400', bg: 'bg-amber-500/5' }
-          : { border: 'border-primary/30', text: 'text-primary', bg: 'bg-primary/5' };
-        const runwayLabel = wcBalance < totalStipends
-          ? 'Cannot cover next payroll'
-          : runway === 0 ? '< 1 month'
-          : `${runway} month${runway !== 1 ? 's' : ''}`;
-        return (
-          <Card className={`bg-card ${toneClasses.border} border ${toneClasses.bg}`}>
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Shield className={`w-4 h-4 ${toneClasses.text}`} />
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">Stipend Coverage</div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <div className={`text-2xl font-bold ${toneClasses.text}`}>{coveragePct}%</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">of next payroll covered</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
-                    {formatCurrency(wcBalance)} WC ÷ {formatCurrency(totalStipends)} stipends
-                  </div>
-                </div>
-                <div>
-                  <div className={`text-2xl font-bold ${toneClasses.text}`}>{runwayLabel}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">stipend runway without inflow</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
-                    Thresholds: ≥{amber}m green · {red}–{amber - 1}m amber · &lt;{red}m red
-                  </div>
-                </div>
-                <div>
-                  <div className={`text-2xl font-bold ${buffer < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                    {formatCurrency(buffer)}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">free for other expenses</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
-                    after next payroll covered
-                  </div>
-                </div>
-              </div>
-              {totalDeferred > 0 && (
-                <div className="text-xs text-amber-400 mt-3 pt-3 border-t border-border/50">
-                  + {formatCurrency(totalDeferred)} deferred owed from previous months — true next payroll: {formatCurrency(totalStipends + totalDeferred)}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })()}
-
-      {/* Quick actions */}
-      <div className="flex gap-3 flex-wrap">
-        <Button onClick={openStipendPanel} className="bg-blue-600 hover:bg-blue-500 text-white text-sm">
-          <Users className="w-4 h-4 mr-2" />Pay Stipends
-        </Button>
-      </div>
-
-      {/* Pay Stipends Panel */}
-      {showStipendPanel && (
-        <Card className="bg-card border-blue-500/30 border animate-fadeIn">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center justify-between">
-              <span>Pay Stipends — {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-                {[2,5,8,11].includes(new Date().getMonth()) && (
-                  <span className="ml-2 text-xs text-amber-400 font-normal">★ Quarter-end — Bank rewards included</span>
-                )}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => setShowStipendPanel(false)} className="h-7 w-7 p-0">
-                <X className="w-4 h-4" />
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Stipend Protection banner */}
-            {!thresholdStatus.skipped && (() => {
-              const t = thresholdStatus;
-              const isFull = t.status === 'full';
-              const isBelow = t.status === 'partial_below';
-              const tone = isFull ? { bg: 'bg-primary/5', border: 'border-primary/30', text: 'text-primary', label: '✓ Full payout' }
-                : isBelow ? { bg: 'bg-destructive/5', border: 'border-destructive/30', text: 'text-destructive', label: '⚠ Below partial threshold' }
-                : { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', label: '⚠ Below full threshold' };
-              return (
-                <div className={`mb-3 p-3 ${tone.bg} ${tone.border} border rounded-lg text-xs`}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-medium ${tone.text}`}>{tone.label}</span>
-                      <span className="text-muted-foreground">·</span>
-                      <span className="text-foreground">Payout rate: <span className={`font-semibold ${tone.text}`}>{t.rate}%</span></span>
-                    </div>
-                    <span className="text-muted-foreground">
-                      Coverage: <span className={`font-semibold ${tone.text}`}>{t.coverage}%</span>
-                      <span className="text-muted-foreground"> ({formatCurrency(t.revenue)} revenue ÷ {formatCurrency(t.totalStipends)} stipends)</span>
-                    </span>
-                  </div>
-                  <div className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                    <span>Full ≥ {t.fullMultiplier}% coverage ({formatCurrency(t.fullThresholdAmount)}) → 100%</span>
-                    <span>· Partial ≥ {t.partialMultiplier}% coverage ({formatCurrency(t.partialThresholdAmount)}) → {t.betweenRate}%</span>
-                    <span>· Below → {t.belowRate}%</span>
-                  </div>
-                  {!isFull && (
-                    <div className="text-muted-foreground mt-1 italic">
-                      Pre-filled at {t.rate}% of (stipend + deferred). Override per member if needed; shortfall becomes deferred.
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Projected bonus warning */}
-            {totalProjectedBonuses > 0 && (
-              <div className="mb-3 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-400 flex items-start gap-2">
-                <span className="mt-0.5 flex-shrink-0">⟳</span>
-                <span>
-                  <span className="font-medium">{formatCurrency(totalProjectedBonuses)}</span> in bonuses are still <span className="font-medium">PROJECTED</span> — client payment hasn't landed yet. These are shown below but cannot be paid until the invoice is confirmed.
-                </span>
-              </div>
-            )}
-
-            {/* Column headers */}
-            <div className="grid grid-cols-7 gap-2 pb-2 mb-1 border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
-              <div>Member</div>
-              <div>Stipend</div>
-              <div className="text-primary">Confirmed bonus</div>
-              <div className="text-amber-400">Projected bonus</div>
-              <div className="text-amber-400">{isQuarterEnd ? 'Q-Reward' : 'Q-Reward'}</div>
-              <div>Pay amount</div>
-              <div>Status</div>
-            </div>
-            <div className="space-y-2 mb-4">
-              {activeMembers.filter(m => {
-                const currentMonthStr = new Date().toISOString().slice(0, 7);
-                const allClientProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client');
-                const hasAnyBonus = allClientProjects.some(p => p.distribution.find(d => d.memberId === m.id && d.finalBonus > 0));
-                return m.stipend > 0 || hasAnyBonus;
-              }).map(m => {
-                const deferred = m.deferredStipendBalance || 0;
-                const totalOwed = m.stipend + deferred;
-                const currentMonthStr = new Date().toISOString().slice(0, 7);
-                // Split bonuses: confirmed vs projected
-                const confirmedProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client' && confirmedProjectIds.has(p.id));
-                const projectedProjects = state.projects.filter(p => p.month === currentMonthStr && p.type === 'client' && !confirmedProjectIds.has(p.id));
-                const confirmedBonus = Math.round(confirmedProjects.reduce((s, p) => {
-                  const dist = p.distribution.find(d => d.memberId === m.id);
-                  return s + (dist?.finalBonus || 0);
-                }, 0));
-                const projectedBonus = Math.round(projectedProjects.reduce((s, p) => {
-                  const dist = p.distribution.find(d => d.memberId === m.id);
-                  return s + (dist?.finalBonus || 0);
-                }, 0));
-                const isBonusOnly = m.stipend === 0;
-                const bankReward = Math.round(getContributionBankReward(m.id).rewardAmount);
-                return (
-                  <div key={m.id} className="grid grid-cols-7 gap-2 items-center py-2 border-b border-border/50 last:border-0">
-                    <div>
-                      <div className="text-sm font-medium">{m.name.split(' ')[0]}</div>
-                      <div className="text-xs text-muted-foreground">{m.role.split(' ')[0]}</div>
-                      {isBonusOnly && <div className="text-xs text-amber-400">Bonus only</div>}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {isBonusOnly
-                        ? <span className="text-muted-foreground">—</span>
-                        : <><div>{formatCurrency(m.stipend)}</div>
-                          {deferred > 0 && <div className="text-red-400">+{formatCurrency(deferred)} deferred</div>}</>}
-                    </div>
-                    <div className="text-xs">
-                      {confirmedBonus > 0
-                        ? <span className="text-primary font-medium">{formatCurrency(confirmedBonus)}</span>
-                        : <span className="text-muted-foreground">—</span>}
-                    </div>
-                    <div className="text-xs">
-                      {projectedBonus > 0
-                        ? <span className="text-amber-400">{formatCurrency(projectedBonus)} ⟳</span>
-                        : <span className="text-muted-foreground">—</span>}
-                    </div>
-                    <div className="text-xs">
-                      {bankReward > 0
-                        ? <span className={isQuarterEnd ? 'text-amber-400 font-medium' : 'text-amber-400/50'}>{formatCurrency(bankReward)}{!isQuarterEnd && ' *'}</span>
-                        : <span className="text-muted-foreground">—</span>}
-                    </div>
-                    <div>
-                      {isBonusOnly
-                        ? <div className="text-xs text-muted-foreground italic">Auto from bonus pool</div>
-                        : <Input
-                            type="number"
-                            value={stipendAmounts[m.id] || ''}
-                            onChange={e => setStipendAmounts(prev => ({ ...prev, [m.id]: e.target.value }))}
-                            placeholder={String(totalOwed)}
-                            className="h-8 text-sm bg-secondary border-input"
-                          />}
-                    </div>
-                    <div className="text-xs">
-                      {isBonusOnly
-                        ? (confirmedBonus > 0 ? <span className="text-primary">✓ Confirmed bonus</span> : projectedBonus > 0 ? <span className="text-amber-400">⟳ Awaiting payment</span> : <span className="text-muted-foreground">—</span>)
-                        : (() => {
-                            const paying = parseFloat(stipendAmounts[m.id]) || 0;
-                            const shortfall = totalOwed - paying;
-                            if (shortfall > 0 && paying > 0) return <span className="text-amber-400">Deferring {formatCurrency(shortfall)}</span>;
-                            if (paying >= totalOwed && paying > 0) return <span className="text-primary">✓ Paid</span>;
-                            return <span className="text-muted-foreground">—</span>;
-                          })()}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {(() => {
-                const totalBankPreview = isQuarterEnd ? totalBankRewards : 0;
-                const bbPortion = totalBonusesPreview;
-                const wcPortion = totalPaying + totalBankPreview;
-                const wcInsufficient = wcPortion > wcBalance;
-                const bbInsufficient = bbPortion > 0 && bbPortion > bonusBankBalance;
-                const nothingToPay = wcPortion === 0 && bbPortion === 0;
-                return (
-                  <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-border">
-                    <div className="text-sm space-y-1.5">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div>
-                          <span className="text-muted-foreground">WC: </span>
-                          <span className="text-foreground">{formatCurrency(wcBalance)}</span>
-                          <span className="text-muted-foreground mx-1.5">→</span>
-                          <span className={wcInsufficient ? 'text-destructive' : 'text-primary'}>
-                            {formatCurrency(wcBalance - wcPortion)}
-                          </span>
-                        </div>
-                        {bbPortion > 0 && (
-                          <div>
-                            <span className="text-muted-foreground">Bonus Bank: </span>
-                            <span className="text-foreground">{formatCurrency(bonusBankBalance)}</span>
-                            <span className="text-muted-foreground mx-1.5">→</span>
-                            <span className={bbInsufficient ? 'text-destructive' : 'text-[#73F764]'}>
-                              {formatCurrency(bonusBankBalance - bbPortion)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {wcPortion > 0 && <span>WC pays: {formatCurrency(totalPaying)} stipends{totalBankPreview > 0 ? ` + ${formatCurrency(totalBankPreview)} Q-Rewards` : ''}</span>}
-                        {bbPortion > 0 && <span className="text-[#73F764]">{wcPortion > 0 ? ' · ' : ''}Bonus Bank pays: {formatCurrency(bbPortion)} bonuses</span>}
-                        {!isQuarterEnd && totalBankRewards > 0 && <span className="text-muted-foreground"> (* Q-Rewards paid in Mar/Jun/Sep/Dec)</span>}
-                      </div>
-                      {bbPortion > 0 && bbInsufficient && (
-                        <div className="text-xs text-amber-400">
-                          Bonus Bank needs {formatCurrency(bbPortion - bonusBankBalance)} more — confirm more billing payments to auto-fund it.
-                        </div>
-                      )}
-                      {totalProjectedBonuses > 0 && (
-                        <div className="text-xs text-amber-400">
-                          + {formatCurrency(totalProjectedBonuses)} projected bonuses excluded — awaiting client payment
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => setShowStipendPanel(false)}>Cancel</Button>
-                      <Button size="sm" onClick={payStipends}
-                        disabled={wcInsufficient || bbInsufficient || nothingToPay}
-                        className="bg-blue-600 hover:bg-blue-500 text-white">
-                        Pay {formatCurrency(wcPortion + bbPortion)}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })()}
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -1172,7 +514,7 @@ export function WorkingCapital() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Transaction Ledger ({filteredTxs.length + filteredBbTxs.length})
+                  Transaction Ledger ({filteredTxs.length})
                 </CardTitle>
                 <div className="flex gap-2 flex-wrap">
                   <Select value={filterMonth} onValueChange={setFilterMonth}>
@@ -1199,7 +541,7 @@ export function WorkingCapital() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {filteredTxs.length === 0 && filteredBbTxs.length === 0 ? (
+              {filteredTxs.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <Wallet className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No transactions yet.</p>
@@ -1219,97 +561,6 @@ export function WorkingCapital() {
                     </thead>
                     <tbody>
                       {groupedLedgerRows.map((row) => {
-                        // ── Bonus Bank single transaction ──
-                        if (row.kind === 'bb-tx') {
-                          const tx = row.tx;
-                          return (
-                            <tr key={tx.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/10">
-                              <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">{tx.date}</td>
-                              <td className="py-3 px-3">
-                                <div className="text-sm">{tx.description}</div>
-                                {tx.autoGenerated && (
-                                  <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded mt-0.5 inline-block">auto</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-3">
-                                <span className={`text-xs ${bbCatColor(tx.category)}`}>{bbCatLabel(tx.category)}</span>
-                              </td>
-                              <td className="py-3 px-3 text-right">
-                                <span className={`text-sm font-semibold ${tx.type === 'credit' ? 'text-[#73F764]' : 'text-red-400'}`}>
-                                  {tx.type === 'credit' ? '+' : '−'}{formatCurrency(tx.amount)}
-                                </span>
-                              </td>
-                              <td className="py-3 px-3 text-right text-sm text-muted-foreground">
-                                {formatCurrency(tx.balanceAfter)}
-                              </td>
-                              <td className="py-3 px-3 no-print">
-                                <Button variant="ghost" size="sm" onClick={() => deleteBbTransaction(tx)}
-                                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        }
-                        // ── Bonus Bank monthly payout group (collapsible) ──
-                        if (row.kind === 'bb-payout-group') {
-                          const groupKey = `bb-payout-${row.month}`;
-                          const isExpanded = expandedPayrollGroups.has(groupKey);
-                          const monthLabel = new Date(row.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-                          return (
-                            <>
-                              <tr key={groupKey}
-                                className="border-b border-border/50 hover:bg-secondary/20 cursor-pointer select-none"
-                                onClick={() => setExpandedPayrollGroups(prev => {
-                                  const next = new Set(prev);
-                                  next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
-                                  return next;
-                                })}
-                              >
-                                <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">{row.month}</td>
-                                <td className="py-3 px-3">
-                                  <div className="flex items-center gap-2">
-                                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                                    <div>
-                                      <div className="text-sm font-medium">Bonus Payouts — {monthLabel}</div>
-                                      <div className="text-xs text-muted-foreground">{row.txs.length} members · click to {isExpanded ? 'collapse' : 'expand'}</div>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="py-3 px-3">
-                                  <span className="text-xs text-blue-400">🏦 Bonus Paid</span>
-                                </td>
-                                <td className="py-3 px-3 text-right">
-                                  <span className="text-sm font-semibold text-red-400">−{formatCurrency(row.total)}</span>
-                                </td>
-                                <td className="py-3 px-3 text-right text-sm text-muted-foreground">
-                                  {formatCurrency(row.balanceAfter)}
-                                </td>
-                                <td className="py-3 px-3" />
-                              </tr>
-                              {isExpanded && row.txs.map(tx => (
-                                <tr key={tx.id} className="border-b border-border/30 bg-secondary/10 hover:bg-secondary/20">
-                                  <td className="py-2 px-3 pl-8 text-xs text-muted-foreground whitespace-nowrap">{tx.date}</td>
-                                  <td className="py-2 px-3 pl-8">
-                                    <div className="text-xs text-foreground/80">{tx.description}</div>
-                                    {tx.autoGenerated && <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded mt-0.5 inline-block">auto</span>}
-                                  </td>
-                                  <td className="py-2 px-3" />
-                                  <td className="py-2 px-3 text-right">
-                                    <span className="text-xs font-medium text-red-400">−{formatCurrency(tx.amount)}</span>
-                                  </td>
-                                  <td className="py-2 px-3 text-right text-xs text-muted-foreground">{formatCurrency(tx.balanceAfter)}</td>
-                                  <td className="py-2 px-3 no-print">
-                                    <Button variant="ghost" size="sm" onClick={() => deleteBbTransaction(tx)}
-                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive">
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </>
-                          );
-                        }
                         if (row.kind === 'payroll-group') {
                           const groupKey = `payroll-${row.month}`;
                           const isExpanded = expandedPayrollGroups.has(groupKey);

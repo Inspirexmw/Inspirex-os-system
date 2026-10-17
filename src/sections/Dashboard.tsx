@@ -1,34 +1,23 @@
+import { monthProfit } from '@/lib/profit';
+import { Figure } from '@/components/ui/figure';
 import { useMemo, useState } from 'react';
 import {
-  Award,
   Wallet,
   PiggyBank,
   Briefcase,
   Bell,
   Activity,
-  Users,
   ArrowRight,
   Receipt,
-  Calculator,
-  ListChecks,
+  FilePlus,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApp } from '@/hooks/useAppState';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import { motion } from 'framer-motion';
 import { StatCard } from '@/components/ui/stat-card';
-import { AnimatedNumber } from '@/components/ui/animated-number';
 import { DeltaPill } from '@/components/ui/delta-pill';
 import { CashFlowChart } from '@/components/ui/cash-flow-chart';
-import { BrandedTooltip } from '@/components/ui/branded-tooltip';
 import { ActivityFeed } from '@/components/ui/activity-feed';
-import { TeamRailItem } from '@/components/ui/team-rail';
 import { NextStepsCard } from '@/components/ui/next-steps-card';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-pill';
 import { buildActivityFeed, buildCashFlowSeries } from '@/lib/activity-builder';
@@ -43,47 +32,38 @@ const staggerGrid = {
 };
 
 export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/types').ViewType) => void }) {
-  const { state, dispatch, formatCurrency, getActiveMembers } = useApp();
+  const { state, dispatch, formatCurrency } = useApp();
   const [dashTab, setDashTab] = useState<'operations' | 'billing'>('operations');
 
-  const activeMembers = getActiveMembers();
   const currentMonth = new Date().toISOString().slice(0, 7);
 
   // ── METRICS ──────────────────────────────────────────────────────────
   const metrics = useMemo(() => {
     const billingInvoices = (state.billing?.documents || []).filter((d: any) => d.type === 'invoice');
-    const totalReceivedThisMonth = billingInvoices.reduce((sum: number, inv: any) =>
-      sum + inv.payments.filter((p: any) => p.date?.startsWith(currentMonth))
-                       .reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0), 0);
+    const receivedIn = (month: string) => billingInvoices.reduce((sum: number, inv: any) =>
+      sum + (inv.payments || []).filter((p: any) => p.date?.startsWith(month))
+                       .reduce((ps: number, p: any) => ps + (p.mwkEquivalent || p.amount || 0), 0), 0);
+    const invoicedIn = (month: string) => billingInvoices
+      .filter((inv: any) => (inv.issueDate || '').startsWith(month))
+      .reduce((sum: number, inv: any) => sum + inv.total * (inv.exchangeRate || 1), 0);
+    // Profit in a month = client payments received minus project costs
+    const retainedIn = (month: string) => monthProfit(state, month);
 
-    const totalRevenue = state.projects.filter(p => p.type === 'client' && p.month === currentMonth)
-      .reduce((sum, p) => sum + p.revenue, 0);
-    const totalBonusPool = state.projects.filter(p => p.month === currentMonth)
-      .reduce((sum, p) => sum + p.bonusPool, 0);
-    const totalCompanyContribution = state.projects.filter(p => p.month === currentMonth)
-      .reduce((sum, p) => sum + p.companyContribution, 0);
+    const totalReceivedThisMonth = receivedIn(currentMonth);
+    const totalInvoicedThisMonth = invoicedIn(currentMonth);
+    const retainedThisMonth = retainedIn(currentMonth);
 
     // ── Month-over-month deltas ──
     const prev = new Date();
     prev.setDate(1);
     prev.setMonth(prev.getMonth() - 1);
     const prevMonth = prev.toISOString().slice(0, 7);
-    const prevRevenue = state.projects.filter(p => p.type === 'client' && p.month === prevMonth).reduce((s, p) => s + p.revenue, 0);
-    const prevReceived = billingInvoices.reduce((sum: number, inv: any) =>
-      sum + inv.payments.filter((p: any) => p.date?.startsWith(prevMonth)).reduce((ps: number, p: any) => ps + p.mwkEquivalent, 0), 0);
-    const prevBonusPool = state.projects.filter(p => p.month === prevMonth).reduce((s, p) => s + p.bonusPool, 0);
-    const prevCompanyContribution = state.projects.filter(p => p.month === prevMonth).reduce((s, p) => s + p.companyContribution, 0);
     const pctDelta = (curr: number, p: number): number | null => {
       if (p === 0) return curr === 0 ? 0 : null;
       return ((curr - p) / p) * 100;
     };
 
-    const clientProjects = state.projects.filter(p => p.type === 'client' && p.month === currentMonth).length;
-    const internalProjects = state.projects.filter(p => p.type === 'internal' && p.month === currentMonth).length;
-    const impressionProjects = state.projects.filter(p => p.type === 'impression' && p.month === currentMonth).length;
     const retainedProfit = state.retainedProfit || 0;
-    const totalDeferred = activeMembers.reduce((s, m) => s + (m.deferredStipendBalance || 0), 0);
-    const totalStipends = activeMembers.reduce((s, m) => s + m.stipend, 0);
 
     // Auto-transfer prompt
     const today = new Date();
@@ -94,33 +74,16 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     const autoPct = state.settings.workingCapital?.autoTransferPercent ?? 0;
     const lastHandled = state.lastAutoTransferMonth || '';
     const autoTransferPending = isMonthEnd && autoEnabled && autoPct > 0 && lastHandled !== currentMonth;
-    const confirmedThisMonth = state.projects.filter(p => p.month === currentMonth && p.type === 'client' && p.paymentStatus === 'confirmed');
-    const monthCompanyFund = confirmedThisMonth.reduce((s, p) => s + p.companyContribution, 0);
-    const suggestedTransfer = Math.round(monthCompanyFund * autoPct / 100);
-
-    // Confirmed unpaid bonuses
-    const confirmedUnpaidProjects = state.projects.filter(p => p.type === 'client' && p.paymentStatus === 'confirmed' && p.bonusPool > 0);
-    const confirmedUnpaidBonuses = confirmedUnpaidProjects.reduce((s, p) => s + p.bonusPool, 0);
+    const suggestedTransfer = Math.round(Math.max(0, retainedThisMonth) * autoPct / 100);
 
     return {
-      totalRevenue, totalReceivedThisMonth, totalBonusPool, totalCompanyContribution,
-      revenueDelta: pctDelta(totalRevenue, prevRevenue),
-      receivedDelta: pctDelta(totalReceivedThisMonth, prevReceived),
-      bonusPoolDelta: pctDelta(totalBonusPool, prevBonusPool),
-      companyDelta: pctDelta(totalCompanyContribution, prevCompanyContribution),
-      retainedProfit, totalDeferred, totalStipends,
-      clientProjects, internalProjects, impressionProjects,
+      totalReceivedThisMonth, totalInvoicedThisMonth, retainedThisMonth, retainedProfit,
+      receivedDelta: pctDelta(totalReceivedThisMonth, receivedIn(prevMonth)),
+      invoicedDelta: pctDelta(totalInvoicedThisMonth, invoicedIn(prevMonth)),
+      retainedDelta: pctDelta(retainedThisMonth, retainedIn(prevMonth)),
       autoTransferPending, suggestedTransfer, autoTransferPercent: autoPct,
-      confirmedUnpaidBonuses, confirmedUnpaidProjects,
     };
-  }, [state.projects, state.workLog, state.billing, state.retainedProfit, state.lastAutoTransferMonth, state.settings.workingCapital, activeMembers, currentMonth]);
-
-  // ── WORK TYPE PIE ──────────────────────────────────────────────────
-  const workTypeData = useMemo(() => [
-    { name: 'Client', value: state.workLog.filter(e => e.type === 'client').reduce((s, e) => s + e.totalPoints, 0), color: '#73F764' },
-    { name: 'Internal', value: state.workLog.filter(e => e.type === 'internal').reduce((s, e) => s + e.totalPoints, 0), color: '#4a9edd' },
-    { name: 'Impression', value: state.workLog.filter(e => e.type === 'impression').reduce((s, e) => s + e.totalPoints, 0), color: '#e0a840' },
-  ].filter(d => d.value > 0), [state.workLog]);
+  }, [state, state.billing, state.wcTransactions, state.retainedProfit, state.lastAutoTransferMonth, state.settings.workingCapital, currentMonth]);
 
   // ── CASH FLOW SERIES ──────────────────────────────────────────────
   const cashFlow = useMemo(() => buildCashFlowSeries(state, 6), [state]);
@@ -128,10 +91,13 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
   // ── ACTIVITY FEED ─────────────────────────────────────────────────
   const activity = useMemo(() => buildActivityFeed(state, 8), [state]);
 
-  // ── RECENT PROJECTS ───────────────────────────────────────────────
-  const recentProjects = useMemo(() =>
-    [...state.projects].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
-    [state.projects]);
+  // ── RECENT INVOICES ───────────────────────────────────────────────
+  const recentInvoices = useMemo(() =>
+    [...(state.billing?.documents || [])]
+      .filter((d: any) => d.type === 'invoice')
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5),
+    [state.billing]);
 
   // ── NEXT STEPS ────────────────────────────────────────────────────
   const nextSteps = useMemo(() => {
@@ -142,27 +108,17 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       id: 'overdue', label: `${overdue.length} overdue invoice${overdue.length !== 1 ? 's' : ''}`,
       detail: 'Follow up with clients', icon: Receipt, onClick: () => onViewChange?.('billing'),
     });
-    if (metrics.confirmedUnpaidBonuses > 0) steps.push({
-      id: 'bonuses', label: 'Pay team bonuses',
-      detail: `${formatCurrency(metrics.confirmedUnpaidBonuses)} ready to distribute`,
-      icon: Users, onClick: () => onViewChange?.('capital'),
-    });
-    const projectsWithoutScores = state.projects.filter(p => p.type === 'client' && p.distribution.length === 0).length;
-    if (projectsWithoutScores > 0) steps.push({
-      id: 'score', label: `${projectsWithoutScores} project${projectsWithoutScores !== 1 ? 's' : ''} need scoring`,
-      detail: 'Assign team scores', icon: ListChecks, onClick: () => onViewChange?.('tasks'),
-    });
     if (metrics.autoTransferPending && metrics.suggestedTransfer > 0) steps.push({
       id: 'transfer', label: 'Month-end transfer ready',
-      detail: `${formatCurrency(metrics.suggestedTransfer)} from Company Fund`,
+      detail: `${formatCurrency(metrics.suggestedTransfer)} from Retained Profit`,
       icon: Wallet, onClick: () => onViewChange?.('capital'),
     });
     if (steps.length === 0) steps.push({
-      id: 'create', label: 'Create a new project', detail: 'Run the calculator', icon: Calculator,
-      onClick: () => onViewChange?.('calculator'),
+      id: 'create', label: 'Create a new quote', detail: 'Start from Billing', icon: FilePlus,
+      onClick: () => onViewChange?.('billing'),
     });
     return steps;
-  }, [state.billing, state.projects, metrics, formatCurrency, onViewChange]);
+  }, [state.billing, metrics, formatCurrency, onViewChange]);
 
   // ── BILLING DATA (for Billing tab) ───────────────────────────────
   const billing = state.billing;
@@ -179,11 +135,11 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
     return s + Math.max(0, inv.total * ((inv as any).exchangeRate || 1) - paid);
   }, 0);
 
-  // ── PROJECT STATUS TONE ──────────────────────────────────────────
-  const projectStatusTone = (p: any): StatusTone =>
-    p.paymentStatus === 'confirmed' ? 'lime'
-    : p.paymentStatus === 'partial' ? 'amber'
-    : 'blue';
+  // ── INVOICE STATUS TONE ──────────────────────────────────────────
+  const invoiceTone = (i: any): StatusTone => {
+    const isOverdue = i.status !== 'paid' && i.dueDate && new Date(i.dueDate) < new Date();
+    return i.status === 'paid' ? 'lime' : isOverdue ? 'red' : i.status === 'partial' ? 'amber' : 'blue';
+  };
 
   return (
     <div className="space-y-6">
@@ -232,7 +188,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             type: 'inflow',
             category: 'profit_to_wc_operations',
             amount: metrics.suggestedTransfer,
-            description: 'Month-end auto-transfer — ' + metrics.autoTransferPercent + '% of company fund',
+            description: 'Month-end auto-transfer — ' + metrics.autoTransferPercent + '% of retained profit',
             balanceAfter: newBalance,
             autoGenerated: true,
           }});
@@ -246,7 +202,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               <div>
                 <div className="text-sm font-medium text-blue-400">Month-end transfer ready</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {metrics.autoTransferPercent}% of this month's company fund — {formatCurrency(metrics.suggestedTransfer)} suggested to transfer to Working Capital
+                  {metrics.autoTransferPercent}% of this month's retained profit — {formatCurrency(metrics.suggestedTransfer)} suggested to transfer to Working Capital
                 </div>
               </div>
             </div>
@@ -273,52 +229,40 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</p>
-                      <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
-                        <Wallet className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <DeltaPill value={metrics.receivedDelta} size="xs" />
+                        <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+                          <Wallet className="w-3.5 h-3.5" />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
-                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap text-primary">
-                        <AnimatedNumber value={metrics.totalReceivedThisMonth} format={formatCurrency} />
-                      </p>
-                      <DeltaPill value={metrics.receivedDelta} size="xs" />
+                    <div className="mt-3 min-w-0">
+                      <Figure value={metrics.totalReceivedThisMonth} format={formatCurrency} className="text-primary" />
                     </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-[11px] text-blue-400/70 uppercase tracking-wider">Invoiced</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-semibold tabular text-blue-400 whitespace-nowrap">{formatCurrency(metrics.totalRevenue)}</span>
-                        <DeltaPill value={metrics.revenueDelta} size="xs" />
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-blue-400/80 mt-2 whitespace-nowrap truncate" title={'Invoiced this month: ' + formatCurrency(Math.round(metrics.totalInvoicedThisMonth))}>
+                      Invoiced <span className="font-semibold tabular">{formatCurrency(Math.round(metrics.totalInvoicedThisMonth))}</span>
+                    </p>
                   </CardContent>
                 </Card>
               </motion.div>
 
-              {/* Profit — Company Fund (primary) + Bonus Pool (secondary) */}
+              {/* Profit earned this month (100% of payments) */}
               <motion.div variants={fadeUpItem}>
                 <Card className="bg-card border-border h-full">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Company Fund</p>
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center flex-shrink-0">
-                        <Briefcase className="w-3.5 h-3.5" />
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Profit (Month)</p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <DeltaPill value={metrics.retainedDelta} size="xs" />
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center flex-shrink-0">
+                          <Briefcase className="w-3.5 h-3.5" />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
-                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap text-amber-400">
-                        <AnimatedNumber value={metrics.totalCompanyContribution} format={formatCurrency} />
-                      </p>
-                      <DeltaPill value={metrics.companyDelta} size="xs" />
+                    <div className="mt-3 min-w-0">
+                      <Figure value={metrics.retainedThisMonth} format={formatCurrency} className="text-amber-400" />
                     </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-[11px] text-purple-400/70 uppercase tracking-wider flex items-center gap-1.5">
-                        <Award className="w-3 h-3" /> Bonus Pool
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-semibold tabular text-purple-400 whitespace-nowrap">{formatCurrency(metrics.totalBonusPool)}</span>
-                        <DeltaPill value={metrics.bonusPoolDelta} size="xs" />
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">Payments received minus project costs</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -347,151 +291,71 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               </motion.div>
             </motion.div>
 
-            {/* Deferred to Team — only surfaces when there's a real backlog */}
-            {metrics.totalDeferred > 0 && (
-              <div className="flex items-center justify-between gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center flex-shrink-0">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-red-400">Deferred to team — {formatCurrency(metrics.totalDeferred)}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">Owed from previous months · pay when WC allows</div>
-                  </div>
-                </div>
-                <button onClick={() => onViewChange?.('capital')}
-                  className="text-xs text-red-400 font-medium hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 whitespace-nowrap">
-                  Manage in WC →
-                </button>
-              </div>
-            )}
-
-            {/* CHARTS ROW: Cash Flow + Work Type Donut */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Cash Flow — spans 2 cols */}
-              <Card className="bg-card border-border lg:col-span-2">
-                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm font-medium">Cash Flow</CardTitle>
-                    <p className="text-xs text-muted-foreground mt-0.5">Last 6 months · WC, Bonus Bank, Company Fund</p>
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-primary" /> WC</span>
-                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-blue-400" /> Bonus Bank</span>
-                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-purple-400" /> Co. Fund</span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CashFlowChart data={cashFlow} format={formatCurrency} height={260} />
-                </CardContent>
-              </Card>
-
-              {/* Work Type Donut */}
-              <Card className="bg-card border-border">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Work Distribution</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Points by work type</p>
-                </CardHeader>
-                <CardContent>
-                  {(() => {
-                    const totalPts = workTypeData.reduce((s, w) => s + w.value, 0);
-                    return (
-                      <div className="h-[260px] flex flex-col items-center justify-center">
-                        <div className="relative w-40 h-40">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <defs>
-                                {workTypeData.map((w, i) => (
-                                  <linearGradient key={i} id={`pie-grad-${i}`} x1="0" y1="0" x2="1" y2="1">
-                                    <stop offset="0%" stopColor={w.color} stopOpacity={1} />
-                                    <stop offset="100%" stopColor={w.color} stopOpacity={0.55} />
-                                  </linearGradient>
-                                ))}
-                              </defs>
-                              <Pie data={workTypeData} cx="50%" cy="50%" innerRadius={50} outerRadius={75}
-                                   paddingAngle={4} cornerRadius={4} dataKey="value" stroke="none" animationDuration={900}>
-                                {workTypeData.map((_, i) => <Cell key={`c-${i}`} fill={`url(#pie-grad-${i})`} />)}
-                              </Pie>
-                              <Tooltip content={<BrandedTooltip format={(v) => `${v} pts`} />} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <div className="text-2xl font-semibold tabular"><AnimatedNumber value={totalPts} /></div>
-                            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">total pts</div>
-                          </div>
-                        </div>
-                        <div className="mt-4 w-full space-y-2">
-                          {workTypeData.length === 0 ? (
-                            <div className="text-xs text-muted-foreground text-center">No work logged yet</div>
-                          ) : workTypeData.map(item => {
-                            const pct = totalPts > 0 ? Math.round((item.value / totalPts) * 100) : 0;
-                            return (
-                              <div key={item.name} className="flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                                  <span className="text-foreground/80">{item.name}</span>
-                                </div>
-                                <span className="font-semibold tabular">{pct}%</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* RECENT PROJECTS */}
+            {/* CASH FLOW */}
             <Card className="bg-card border-border">
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-medium">Recent Projects</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">{recentProjects.length} most recent</p>
+                  <CardTitle className="text-sm font-medium">Cash Flow</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Last 6 months · Working Capital and Retained Profit</p>
                 </div>
-                <button onClick={() => onViewChange?.('calculator')} className="text-xs text-primary font-medium hover:underline flex items-center gap-1">
+                <div className="flex items-center gap-3 text-[11px]">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-primary" /> WC</span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-purple-400" /> Retained Profit</span>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CashFlowChart data={cashFlow} format={formatCurrency} height={260} />
+              </CardContent>
+            </Card>
+
+            {/* RECENT INVOICES */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-medium">Recent Invoices</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">{recentInvoices.length} most recent</p>
+                </div>
+                <button onClick={() => onViewChange?.('billing')} className="text-xs text-primary font-medium hover:underline flex items-center gap-1">
                   See all <ArrowRight className="w-3 h-3" />
                 </button>
               </CardHeader>
               <CardContent>
-                {recentProjects.length === 0 ? (
+                {recentInvoices.length === 0 ? (
                   <div className="text-sm text-muted-foreground text-center py-8 italic">
-                    No projects yet. Use the Project Calculator to create your first project.
+                    No invoices yet. Create a quote or invoice in Billing to get started.
                   </div>
                 ) : (
                   <div className="divide-y divide-border/40">
-                    {recentProjects.map((p, i) => (
-                      <motion.div
-                        key={p.id}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, delay: i * 0.04 }}
-                        className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
-                            {p.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium truncate">{p.name}</span>
-                              {p.type === 'client' && <StatusBadge tone={projectStatusTone(p)}>{p.paymentStatus || 'projected'}</StatusBadge>}
-                              {p.type !== 'client' && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{p.type}</span>}
+                    {recentInvoices.map((inv: any, i: number) => {
+                      const client = state.billing.clients.find((c: any) => c.id === inv.clientId);
+                      const isOverdue = inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < new Date();
+                      return (
+                        <motion.div
+                          key={inv.id}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2, delay: i * 0.04 }}
+                          className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
+                              {(client?.name || inv.number).charAt(0).toUpperCase()}
                             </div>
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              {p.month} {p.type === 'client' ? `· ${formatCurrency(p.netProfit)} profit` : `· ${p.distribution.filter(d => d.totalScore > 0).length} scored`}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium truncate">{inv.number}</span>
+                                <StatusBadge tone={invoiceTone(inv)}>{isOverdue ? 'overdue' : inv.status}</StatusBadge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">{client?.name || '—'}{inv.projectName ? ` · ${inv.projectName}` : ''}</div>
                             </div>
                           </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-semibold tabular text-primary">
-                            {p.type === 'client' ? formatCurrency(p.bonusPool) : `${p.distribution.reduce((s, d) => s + d.totalScore, 0)} pts`}
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-sm font-semibold tabular text-primary">{inv.currency} {inv.total.toLocaleString()}</div>
+                            <div className="text-[10px] text-muted-foreground">{inv.dueDate ? `due ${inv.dueDate}` : 'no due date'}</div>
                           </div>
-                          <div className="text-[10px] text-muted-foreground">{p.type === 'client' ? 'bonus pool' : 'team points'}</div>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -541,35 +405,6 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               </CardHeader>
               <CardContent className="pt-0">
                 <ActivityFeed items={activity} format={formatCurrency} emptyText="No financial activity yet" />
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Users className="w-3.5 h-3.5 text-primary" />
-                  Team
-                </CardTitle>
-                <span className="text-[11px] text-muted-foreground tabular">{activeMembers.length}</span>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-1">
-                  {activeMembers.slice(0, 6).map(m => (
-                    <TeamRailItem
-                      key={m.id}
-                      member={m}
-                      earnings={m.stipend}
-                      format={formatCurrency}
-                      onClick={() => onViewChange?.('team')}
-                    />
-                  ))}
-                  {activeMembers.length > 6 && (
-                    <button onClick={() => onViewChange?.('team')}
-                      className="w-full text-xs text-muted-foreground hover:text-foreground py-2 mt-1">
-                      + {activeMembers.length - 6} more →
-                    </button>
-                  )}
-                </div>
               </CardContent>
             </Card>
           </div>

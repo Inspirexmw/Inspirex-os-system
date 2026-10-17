@@ -1,11 +1,7 @@
+import { monthProfit } from '@/lib/profit';
 import {
   LayoutDashboard,
-  Calculator,
-  CheckSquare,
-  ClipboardList,
-  Target,
   BarChart3,
-  Users,
   Settings,
   Wallet,
   ChevronLeft,
@@ -46,13 +42,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'billing', label: 'Billing', icon: Receipt, section: 'Studio Lab' },
-  { id: 'tasks', label: 'Tasks & Scoring', icon: CheckSquare, section: 'Finance' },
-  { id: 'calculator', label: 'Project Calculator', icon: Calculator, section: 'Finance' },
   { id: 'summary', label: 'Monthly Summary', icon: BarChart3, section: 'Finance' },
   { id: 'capital', label: 'Working Capital', icon: Wallet, section: 'Finance' },
-  { id: 'worklog', label: 'Work Log', icon: ClipboardList, section: 'People' },
-  { id: 'commitment', label: 'Commitment Tracker', icon: Target, section: 'People' },
-  { id: 'team', label: 'Team Management', icon: Users, section: 'Settings' },
   { id: 'settings', label: 'Settings', icon: Settings, section: 'Settings' },
 ];
 
@@ -66,19 +57,13 @@ const BILLING_SUB_NAV: { id: BillingView; label: string; group: 'Sales' | 'Finan
   { id: 'retainer',      label: 'Retainers',     group: 'Finance' },
   { id: 'recurring',     label: 'Recurring',     group: 'Finance' },
   { id: 'tax',           label: 'Tax Report',    group: 'Finance' },
+  { id: 'trash',         label: 'Deleted items', group: 'Other' },
   { id: 'bill-settings', label: 'Settings',      group: 'Other' },
 ];
 
 export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse, billingView, onBillingViewChange }: SidebarProps) {
-  const { state, formatCurrency, getActiveMembers, getTotalDeferredStipends } = useApp();
+  const { state } = useApp();
   const [billingOpen, setBillingOpen] = useState(true);
-
-  const activeMembers = getActiveMembers();
-  
-  // Calculate stats
-  const totalBonusPool = state.projects.reduce((sum, p) => sum + p.bonusPool, 0);
-  const totalDeferred = getTotalDeferredStipends();
-  const totalBankPoints = activeMembers.reduce((sum, m) => sum + m.contributionBank.currentQuarterPoints, 0);
 
   const groupedItems = navItems.reduce((acc, item) => {
     const section = item.section || 'Overview';
@@ -118,37 +103,6 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
           )}
         </div>
       </div>
-
-      {/* Stats - only when expanded */}
-      {!collapsed && (
-        <div className="px-4 py-3 border-b border-border">
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div>
-              <div className="text-xs text-muted-foreground">Projects</div>
-              <div className="text-sm font-semibold text-primary">{state.projects.length}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Team</div>
-              <div className="text-sm font-semibold text-primary">{activeMembers.length}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Bonus Pool</div>
-              <div className="text-sm font-semibold text-primary">
-                {totalBonusPool > 0 ? formatCurrency(totalBonusPool) : 'MK 0'}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Bank</div>
-              <div className="text-sm font-semibold text-primary">{totalBankPoints} pts</div>
-            </div>
-          </div>
-          {totalDeferred > 0 && (
-            <div className="mt-2 p-2 bg-amber-500/10 rounded text-center">
-              <div className="text-xs text-amber-400">Deferred: {formatCurrency(totalDeferred)}</div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
@@ -262,7 +216,6 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
         <div className="p-4 border-t border-border">
           <div className="text-[10px] text-muted-foreground space-y-1">
             <div>{state.settings.companyName}</div>
-            <div>{state.settings.revenueSplit.companyPercent}/{state.settings.revenueSplit.bonusPercent} model</div>
             {state.settings.autoSave && <div className="text-[9px] opacity-60">Auto-save enabled</div>}
           </div>
         </div>
@@ -296,15 +249,14 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
     if (daysLeft <= 2 && autoEnabled && autoPercent > 0 && lastHandled !== currentMonth) {
       const hasTransferNotif = existing.some(n => n.type === 'auto_transfer' && n.actionData?.month === currentMonth && !n.dismissed);
       if (!hasTransferNotif) {
-        const confirmedProjects = state.projects.filter(p => p.month === currentMonth && p.type === 'client' && p.paymentStatus === 'confirmed');
-        const fund = confirmedProjects.reduce((s, p) => s + p.companyContribution, 0);
+        const fund = Math.max(0, monthProfit(state, currentMonth));
         const amount = Math.round(fund * autoPercent / 100);
         if (amount > 0) {
           dispatch({ type: 'ADD_NOTIFICATION', payload: {
             id: 'auto-transfer-' + currentMonth,
             type: 'auto_transfer',
             title: 'Month-end transfer ready',
-            message: `${autoPercent}% of this month's company fund — MK ${amount.toLocaleString()} available to transfer to Working Capital.`,
+            message: `${autoPercent}% of this month's retained profit — MK ${amount.toLocaleString()} available to transfer to Working Capital.`,
             createdAt: new Date().toISOString(),
             read: false, dismissed: false,
             actionData: { amount, month: currentMonth, fund, percent: autoPercent },
@@ -314,25 +266,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
       }
     }
 
-    // 2. Confirmed projects with unpaid bonuses
-    const confirmedUnpaid = state.projects.filter(p => p.type === 'client' && p.paymentStatus === 'confirmed' && p.bonusPool > 0);
-    if (confirmedUnpaid.length > 0) {
-      const totalBonus = confirmedUnpaid.reduce((s, p) => s + p.bonusPool, 0);
-      const hasBonus = existing.some(n => n.type === 'bonus_ready' && !n.dismissed && !n.read);
-      if (!hasBonus) {
-        dispatch({ type: 'ADD_NOTIFICATION', payload: {
-          id: 'bonus-ready-' + currentMonth + '-' + confirmedUnpaid.length,
-          type: 'bonus_ready',
-          title: 'Team bonuses ready to pay',
-          message: `${confirmedUnpaid.length} project${confirmedUnpaid.length !== 1 ? 's' : ''} fully paid — MK ${totalBonus.toLocaleString()} in bonuses confirmed.`,
-          createdAt: new Date().toISOString(),
-          read: false, dismissed: false,
-          actionData: { total: totalBonus, count: confirmedUnpaid.length },
-        }});
-      }
-    }
-
-    // 3. Overdue invoices
+    // 2. Overdue invoices
     const invoices = state.billing?.documents?.filter((d: any) => d.type === 'invoice') || [];
     const overdue = invoices.filter((inv: any) => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today);
     if (overdue.length > 0) {
@@ -358,29 +292,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
       }
     }
 
-    // 4. Stipend runway critical (replaces old fixed-MWK low-balance alert)
-    const wcBalance = state.wcBalance || 0;
-    const totalStipends = (state.members || []).filter((m: any) => m.isActive).reduce((s: number, m: any) => s + (m.stipend || 0), 0);
-    const runwayRed = state.settings.workingCapital?.runwayRedThreshold ?? 3;
-    if (totalStipends > 0 && wcBalance > 0) {
-      const runway = Math.floor(wcBalance / totalStipends);
-      if (runway < runwayRed) {
-        const hasWC = existing.some(n => n.type === 'wc_low' && !n.dismissed);
-        if (!hasWC) {
-          dispatch({ type: 'ADD_NOTIFICATION', payload: {
-            id: 'wc-low-' + today.toISOString().slice(0,10),
-            type: 'wc_low',
-            title: 'Stipend runway critical',
-            message: `WC covers only ${runway} month${runway !== 1 ? 's' : ''} of stipends (threshold: ${runwayRed}). Top up WC or transfer from Company Fund.`,
-            createdAt: new Date().toISOString(),
-            read: false, dismissed: false,
-            actionData: { balance: wcBalance, runway, threshold: runwayRed },
-          }});
-        }
-      }
-    }
-
-    // 5. Recurring schedules overdue
+    // 3. Recurring schedules overdue
     const schedules = state.billing?.recurringSchedules || [];
     const overdueSchedules = schedules.filter((s: any) => s.active && s.nextDueDate <= today.toISOString().slice(0,10));
     if (overdueSchedules.length > 0) {
@@ -397,7 +309,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
         }});
       }
     }
-  }, [state.projects, state.billing?.documents, state.wcBalance, state.lastAutoTransferMonth]);
+  }, [state, state.wcTransactions, state.billing?.documents, state.lastAutoTransferMonth]);
 
   const handleApproveTransfer = (n: any) => {
     const { amount, month } = n.actionData;
@@ -406,7 +318,7 @@ export function NotificationPanel({ collapsed }: { collapsed: boolean }) {
     dispatch({ type: 'ADD_WC_TRANSACTION', payload: {
       id: txId, date: new Date().toISOString().slice(0,10),
       type: 'inflow', category: 'profit_to_wc_operations',
-      amount, description: 'Month-end auto-transfer — ' + n.actionData.percent + '% of company fund',
+      amount, description: 'Month-end auto-transfer — ' + n.actionData.percent + '% of retained profit',
       balanceAfter: newBal, autoGenerated: true,
     }});
     dispatch({ type: 'MARK_AUTO_TRANSFER_HANDLED', payload: month });

@@ -5,7 +5,6 @@ export interface CashFlowPoint {
   /** YYYY-MM */
   month: string;
   wc: number;
-  bonusBank: number;
   retainedProfit: number;
 }
 
@@ -29,10 +28,6 @@ export function CashFlowChart({ data, format, height = 280 }: CashFlowChartProps
             <linearGradient id="ar-wc" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#73F764" stopOpacity={0.55} />
               <stop offset="100%" stopColor="#73F764" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="ar-bb" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#4a9edd" stopOpacity={0.45} />
-              <stop offset="100%" stopColor="#4a9edd" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="ar-rp" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.40} />
@@ -58,8 +53,7 @@ export function CashFlowChart({ data, format, height = 280 }: CashFlowChartProps
             width={48}
           />
           <Tooltip content={<BrandedTooltip format={format} titleFormat={monthLabel} />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '3 3' }} />
-          <Area type="monotone" dataKey="retainedProfit" name="Company Fund" stroke="#a78bfa" strokeWidth={2} fill="url(#ar-rp)" animationDuration={900} />
-          <Area type="monotone" dataKey="bonusBank"      name="Bonus Bank"   stroke="#4a9edd" strokeWidth={2} fill="url(#ar-bb)" animationDuration={900} />
+          <Area type="monotone" dataKey="retainedProfit" name="Retained Profit" stroke="#a78bfa" strokeWidth={2} fill="url(#ar-rp)" animationDuration={900} />
           <Area type="monotone" dataKey="wc"             name="WC Balance"   stroke="#73F764" strokeWidth={2.5} fill="url(#ar-wc)" animationDuration={900} />
         </AreaChart>
       </ResponsiveContainer>
