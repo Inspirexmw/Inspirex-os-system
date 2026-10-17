@@ -1,3 +1,4 @@
+import { findPaymentWcTxIds, statusAfterPayments, findLegacyExpenseWcTxId } from '@/lib/payment-reversal';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import {
@@ -130,7 +131,7 @@ export function Billing({ view, onViewChange: setView }: BillingProps) {
       {view === 'clients'       && <ClientsView clients={billing.clients} documents={billing.documents} dispatch={dispatch} toast={toast} />}
       {view === 'quotes'        && <QuotesView quotes={quotes} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} setView={setView} openPreview={openPreview} />}
       {view === 'invoices'      && <InvoicesView invoices={invoices} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
-      {view === 'receipts'      && <ReceiptsView receipts={receipts} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
+      {view === 'receipts'      && <ReceiptsView receipts={receipts} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} openPreview={openPreview} />}
       {view === 'expenses'      && <ExpensesView expenses={expenses} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} />}
       {view === 'retainer'      && <RetainerView invoices={invoices} clients={billing.clients} billing={billing} state={state} dispatch={dispatch} toast={toast} />}
       {view === 'recurring'     && <RecurringView schedules={recurringSchedules} clients={billing.clients} billing={billing} dispatch={dispatch} toast={toast} />}
@@ -580,7 +581,118 @@ function ClientsView({ clients, documents, dispatch, toast }: any) {
 
 // ─── Delete with reason dialog ────────────────────────────────────────────────
 
-interface PendingDelete { id: string; label: string; docNumber: string; docType: string }
+
+// ─── Payment reversal ────────────────────────────────────────────────────────
+// Removes payments from an invoice and undoes everything they caused:
+// the Working Capital entries, Retained Profit, the invoice status and the receipt.
+function reversePayments(dispatch: any, state: any, invoiceId: string, paymentIds: string[], reason: string, opts?: { audit?: boolean }) {
+  const invoice: BillingDocument | undefined = state.billing.documents.find((d: BillingDocument) => d.id === invoiceId);
+  if (!invoice) return { updatedInvoice: null as BillingDocument | null, incomplete: 0 };
+  const removeIds = new Set(paymentIds);
+  const removing = invoice.payments.filter((p: BillingPayment) => removeIds.has(p.id));
+
+  const claimed = new Set<string>();
+  let incomplete = 0;
+  for (const p of removing) {
+    const { ids, complete } = findPaymentWcTxIds(state.wcTransactions || [], invoice, p, claimed);
+    if (!complete) incomplete++;
+    ids.forEach(id => dispatch({ type: 'DELETE_WC_TRANSACTION', payload: id }));
+  }
+
+  const remaining = invoice.payments.filter((p: BillingPayment) => !removeIds.has(p.id));
+  const status = statusAfterPayments(invoice, remaining);
+  const updatedInvoice = { ...invoice, payments: remaining, status: status as any, updatedAt: new Date().toISOString() } as BillingDocument;
+  dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: updatedInvoice });
+
+  const receipt = state.billing.documents.find((d: BillingDocument) => d.type === 'receipt' && (d as any).sourceInvoiceId === invoice.id);
+  if (receipt) {
+    const receiptRemaining = receipt.payments.filter((p: BillingPayment) => !removeIds.has(p.id));
+    if (receiptRemaining.length === 0) {
+      dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: receipt.id });
+    } else {
+      dispatch({ type: 'BILLING_UPDATE_DOCUMENT', payload: { ...receipt, payments: receiptRemaining, status: status === 'paid' ? ('paid' as any) : ('partial' as any), notes: `Receipt for Invoice ${invoice.number} — ${status === 'paid' ? 'Paid in full' : 'Partial payment'}`, updatedAt: new Date().toISOString() } });
+    }
+  }
+
+  if (opts?.audit !== false) {
+    const totalMwk = removing.reduce((sum: number, p: BillingPayment) => sum + p.mwkEquivalent, 0);
+    dispatch({ type: 'ADD_NOTIFICATION', payload: {
+      id: 'del-' + genId(), type: 'record_deleted',
+      title: 'Payment removed — ' + invoice.number,
+      message: (reason.trim() || 'No reason provided') + ' · ' + removing.map((p: BillingPayment) => fmtAmt(p.amount, p.currency)).join(', ') + ' (MK ' + totalMwk.toLocaleString() + ')',
+      createdAt: new Date().toISOString(), read: false, dismissed: false,
+      actionData: { docType: 'payment', docNumber: invoice.number },
+    } });
+  }
+  return { updatedInvoice, incomplete };
+}
+
+// Defaults for the payment form: the invoice's own currency and rate
+function payFormFor(inv: BillingDocument) {
+  return {
+    amount: '',
+    currency: inv.currency as BillingCurrency,
+    exchangeRate: String(inv.currency === 'MWK' ? 1 : ((inv as any).exchangeRate || 1)),
+    method: 'Bank Transfer',
+    reference: '',
+    date: new Date().toISOString().slice(0, 10),
+  };
+}
+
+const PAYMENT_METHODS: string[] = ['Bank Transfer','Mobile Money','Cash','Cheque','Other'];
+
+// Payment form shared by Invoices and Retainers. Opens in the invoice's own currency and rate.
+function PaymentFormCard({ invoice, form, setForm, onRecord, onCancel }: { invoice: BillingDocument; form: any; setForm: (fn: any) => void; onRecord: () => void; onCancel: () => void }) {
+  const isForeign = form.currency !== 'MWK';
+  const rate = parseFloat(form.exchangeRate) || 1;
+  const amt = parseFloat(form.amount || '0') || 0;
+  const mwk = isForeign ? Math.round(amt * rate) : amt;
+  const invoiceRate = (invoice as any).exchangeRate || 1;
+  const mismatch = form.currency !== invoice.currency;
+  return (
+    <Card className="bg-card border-primary/30 border">
+      <CardHeader className="pb-3"><CardTitle className="text-sm">Record Payment — {invoice.number}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <div className="p-2 bg-primary/5 border border-primary/20 rounded text-xs text-muted-foreground">
+          This invoice is in <span className="font-medium text-foreground">{invoice.currency}</span>
+          {invoice.currency !== 'MWK' && <> at <span className="font-medium text-foreground">1 {invoice.currency} = MK {invoiceRate.toLocaleString()}</span></>}
+          . Enter the amount in the currency the client actually paid.
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1"><Label className="text-xs">Amount ({form.currency})</Label><Input type="number" value={form.amount} onChange={e => setForm((p: any) => ({...p, amount: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
+          <div className="space-y-1"><Label className="text-xs">Currency</Label>
+            <Select value={form.currency} onValueChange={v => setForm((p: any) => ({...p, currency: v as BillingCurrency, exchangeRate: v === 'MWK' ? '1' : String(v === invoice.currency ? invoiceRate : (p.exchangeRate && p.exchangeRate !== '1' ? p.exchangeRate : invoiceRate))}))}>
+              <SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-card border-border">{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {isForeign && <div className="space-y-1"><Label className="text-xs">Rate to MWK (from the invoice; edit if different)</Label><Input type="number" value={form.exchangeRate} onChange={e => setForm((p: any) => ({...p, exchangeRate: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>}
+          <div className="space-y-1"><Label className="text-xs">Date</Label><Input type="date" value={form.date} onChange={e => setForm((p: any) => ({...p, date: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
+          <div className="space-y-1"><Label className="text-xs">Method</Label>
+            <Select value={form.method} onValueChange={v => setForm((p: any) => ({...p, method: v}))}>
+              <SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-card border-border">{PAYMENT_METHODS.map((m: string) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1"><Label className="text-xs">Reference</Label><Input value={form.reference} onChange={e => setForm((p: any) => ({...p, reference: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
+        </div>
+        {amt > 0 && (
+          <div className="p-2 rounded border border-primary/30 bg-primary/5 text-xs">
+            Recording <span className="font-semibold text-foreground">{form.currency} {amt.toLocaleString()}</span>
+            {isForeign && <> = <span className="font-semibold text-primary">MK {mwk.toLocaleString()}</span> at {rate.toLocaleString()}</>}
+          </div>
+        )}
+        {mismatch && <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded p-2">Heads up: this invoice is in {invoice.currency} but you are recording {form.currency}.</div>}
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button size="sm" onClick={onRecord}>Record Payment</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface PendingDelete { id: string; label: string; docNumber: string; docType: string; detail?: string; requireReason?: boolean }
 
 function DeleteReasonDialog({ pending, onConfirm, onCancel }: {
   pending: PendingDelete | null;
@@ -598,8 +710,9 @@ function DeleteReasonDialog({ pending, onConfirm, onCancel }: {
         <p className="text-sm text-muted-foreground">
           This will permanently remove <span className="font-medium text-foreground">{pending.docNumber}</span> and any linked records. This cannot be undone.
         </p>
+        {pending.detail && <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md p-2 whitespace-pre-line">{pending.detail}</p>}
         <div className="space-y-1">
-          <Label className="text-xs">Reason (optional)</Label>
+          <Label className="text-xs">{pending.requireReason ? 'Reason (required)' : 'Reason (optional)'}</Label>
           <Textarea
             placeholder="Why are you deleting this record?"
             value={reason}
@@ -610,7 +723,7 @@ function DeleteReasonDialog({ pending, onConfirm, onCancel }: {
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button variant="destructive" size="sm" onClick={() => { onConfirm(reason); setReason(''); }}>Delete</Button>
+          <Button variant="destructive" size="sm" disabled={!!pending.requireReason && reason.trim().length < 3} onClick={() => { onConfirm(reason); setReason(''); }}>Delete</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -832,12 +945,13 @@ function QuotesView({ quotes, clients, billing, dispatch, toast, setView, openPr
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────
 
-function InvoicesView({ invoices, clients, billing, dispatch, toast, openPreview }: any) {
+function InvoicesView({ invoices, clients, billing, state, dispatch, toast, openPreview }: any) {
   const [showForm, setShowForm] = useState(false);
   const [editingDoc, setEditingDoc] = useState<BillingDocument | null>(null);
   const [selected, setSelected] = useState<BillingDocument | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [payingInvoice, setPayingInvoice] = useState<BillingDocument | null>(null);
+  const [pendingPayDelete, setPendingPayDelete] = useState<{ invoiceId: string; payment: BillingPayment; invoiceNumber: string } | null>(null);
   const [payForm, setPayForm] = useState({ amount: '', currency: 'MWK' as BillingCurrency, exchangeRate: '1', method: 'Bank Transfer', reference: '', date: new Date().toISOString().slice(0, 10) });
 
   const getClient = (id: string) => clients.find((c: BillingClient) => c.id === id);
@@ -858,9 +972,17 @@ function InvoicesView({ invoices, clients, billing, dispatch, toast, openPreview
     }, 0) / paidInvoices.length
   );
 
-  const del = (doc: BillingDocument) => setPendingDelete({ id: doc.id, label: 'Invoice', docNumber: doc.number, docType: doc.type });
+  const del = (doc: BillingDocument) => {
+    const linkedCosts = (billing.expenses || []).filter((e: Expense) => e.invoiceId === doc.id).length;
+    const lines: string[] = [];
+    if (doc.payments.length > 0) lines.push(`${doc.payments.length} payment${doc.payments.length !== 1 ? 's' : ''} on this invoice will be undone: Working Capital, Retained Profit and the Dashboard go back to how they were.`);
+    if (linkedCosts > 0) lines.push(`${linkedCosts} project cost${linkedCosts !== 1 ? 's are' : ' is'} linked to this invoice and will stay recorded. Delete ${linkedCosts !== 1 ? 'them' : 'it'} separately under Project Costs if needed.`);
+    setPendingDelete({ id: doc.id, label: 'Invoice', docNumber: doc.number, docType: doc.type, detail: lines.join('\n') || undefined, requireReason: doc.payments.length > 0 });
+  };
   const confirmDelete = (reason: string) => {
     if (!pendingDelete) return;
+    const invDoc = invoices.find((i: BillingDocument) => i.id === pendingDelete.id);
+    if (invDoc && invDoc.payments.length > 0) reversePayments(dispatch, state, invDoc.id, invDoc.payments.map((p: BillingPayment) => p.id), reason, { audit: false });
     dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: pendingDelete.id });
     dispatch({ type: 'ADD_NOTIFICATION', payload: { id: 'del-' + genId(), type: 'record_deleted', title: 'Invoice ' + pendingDelete.docNumber + ' deleted', message: reason.trim() || 'No reason provided', createdAt: new Date().toISOString(), read: false, dismissed: false, actionData: { docType: pendingDelete.docType, docNumber: pendingDelete.docNumber } } });
     if (selected?.id === pendingDelete.id) setSelected(null);
@@ -895,14 +1017,14 @@ function InvoicesView({ invoices, clients, billing, dispatch, toast, openPreview
     // ── 1. WC inflow for audit trail ──
     const wcClient = billing.clients.find((c: BillingClient) => c.id === payingInvoice.clientId);
     const clientLabel = wcClient?.name || 'Client';
-    dispatch({ type: 'ADD_WC_TRANSACTION', payload: { id: 'wc-' + genId(), date: payment.date, type: 'inflow', category: 'client_payment', amount: payment.mwkEquivalent, description: clientLabel + ' — ' + payingInvoice.number + (payment.reference ? ' · ' + payment.reference : ''), reference: payment.reference, balanceAfter: 0, autoGenerated: true } });
+    dispatch({ type: 'ADD_WC_TRANSACTION', payload: { id: 'wc-' + genId(), date: payment.date, type: 'inflow', category: 'client_payment', paymentId: payment.id, amount: payment.mwkEquivalent, description: clientLabel + ' — ' + payingInvoice.number + (payment.reference ? ' · ' + payment.reference : ''), reference: payment.reference, balanceAfter: 0, autoGenerated: true } });
 
     // ── 2. WC outflow → Retained Profit (100% of every payment) ──
     dispatch({ type: 'ADD_WC_TRANSACTION', payload: {
       id: 'wc-cf-' + genId(), date: payment.date, type: 'outflow', category: 'client_to_retained',
       amount: payment.mwkEquivalent,
       description: 'To Retained Profit — ' + payingInvoice.number,
-      reference: payingInvoice.number, balanceAfter: 0, autoGenerated: true,
+      reference: payingInvoice.number, paymentId: payment.id, balanceAfter: 0, autoGenerated: true,
     }});
 
     const existingReceipt = billing.documents.find((d: BillingDocument) => d.type === 'receipt' && (d as any).sourceInvoiceId === payingInvoice.id);
@@ -946,24 +1068,7 @@ function InvoicesView({ invoices, clients, billing, dispatch, toast, openPreview
 
       {/* Payment modal */}
       {payingInvoice && (
-        <Card className="bg-card border-primary/30 border">
-          <CardHeader className="pb-3"><CardTitle className="text-sm">Record Payment — {payingInvoice.number}</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs">Amount</Label><Input type="number" value={payForm.amount} onChange={e => setPayForm(p => ({...p, amount: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
-              <div className="space-y-1"><Label className="text-xs">Currency</Label><Select value={payForm.currency} onValueChange={v => setPayForm(p => ({...p, currency: v as BillingCurrency}))}><SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent className="bg-card border-border">{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
-              {payForm.currency !== 'MWK' && <div className="space-y-1"><Label className="text-xs">Rate to MWK</Label><Input type="number" value={payForm.exchangeRate} onChange={e => setPayForm(p => ({...p, exchangeRate: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>}
-              <div className="space-y-1"><Label className="text-xs">Date</Label><Input type="date" value={payForm.date} onChange={e => setPayForm(p => ({...p, date: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
-              <div className="space-y-1"><Label className="text-xs">Method</Label><Select value={payForm.method} onValueChange={v => setPayForm(p => ({...p, method: v}))}><SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent className="bg-card border-border">{['Bank Transfer','Mobile Money','Cash','Cheque','Other'].map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1"><Label className="text-xs">Reference</Label><Input value={payForm.reference} onChange={e => setPayForm(p => ({...p, reference: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
-            </div>
-            {payForm.currency !== 'MWK' && payForm.amount && <div className="text-xs text-muted-foreground">MWK equivalent: <span className="text-foreground font-medium">MK {Math.round(parseFloat(payForm.amount||'0') * (parseFloat(payForm.exchangeRate)||1)).toLocaleString()}</span></div>}
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setPayingInvoice(null)}>Cancel</Button>
-              <Button size="sm" onClick={recordPayment}>Record Payment</Button>
-            </div>
-          </CardContent>
-        </Card>
+        <PaymentFormCard invoice={payingInvoice} form={payForm} setForm={setPayForm} onRecord={recordPayment} onCancel={() => setPayingInvoice(null)} />
       )}
 
       <div className="flex gap-4">
@@ -1040,16 +1145,19 @@ function InvoicesView({ invoices, clients, billing, dispatch, toast, openPreview
                   {selected.payments.length > 0 && (
                     <div className="pt-1 space-y-1">
                       {selected.payments.map((p: BillingPayment) => (
-                        <div key={p.id} className="flex justify-between text-[10px] text-muted-foreground">
+                        <div key={p.id} className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                           <span>{p.date} · {p.method}</span>
-                          <span className="text-primary">{fmtAmt(p.amount, p.currency)}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-primary">{fmtAmt(p.amount, p.currency)}</span>
+                            <button type="button" title="Delete this payment" className="text-muted-foreground hover:text-destructive" onClick={() => setPendingPayDelete({ invoiceId: selected.id, payment: p, invoiceNumber: selected.number })}><Trash2 className="w-3 h-3" /></button>
+                          </span>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
                 <div className="border-t border-border pt-3 space-y-1.5">
-                  {selected.status !== 'paid' && <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-primary border-primary/40" variant="outline" onClick={() => setPayingInvoice(selected)}><Check className="w-3 h-3" />Record Payment</Button>}
+                  {selected.status !== 'paid' && <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start text-primary border-primary/40" variant="outline" onClick={() => { setPayingInvoice(selected); setPayForm(payFormFor(selected)); }}><Check className="w-3 h-3" />Record Payment</Button>}
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => { setEditingDoc(selected); setSelected(null); }}><Edit2 className="w-3 h-3" />Edit</Button>
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => openPreview(selected)}><Eye className="w-3 h-3" />Preview</Button>
                   <Button size="sm" className="w-full text-xs h-8 gap-1.5 justify-start" variant="outline" onClick={() => generatePDF(selected, selClient, billing.settings)}><FileText className="w-3 h-3" />Download PDF</Button>
@@ -1064,6 +1172,19 @@ function InvoicesView({ invoices, clients, billing, dispatch, toast, openPreview
         )}
       </div>
       <DeleteReasonDialog pending={pendingDelete} onConfirm={confirmDelete} onCancel={() => setPendingDelete(null)} />
+      <DeleteReasonDialog
+        pending={pendingPayDelete ? { id: pendingPayDelete.payment.id, label: 'Payment', docNumber: fmtAmt(pendingPayDelete.payment.amount, pendingPayDelete.payment.currency) + ' on ' + pendingPayDelete.invoiceNumber, docType: 'payment', requireReason: true, detail: 'The invoice balance, Working Capital, Retained Profit, the receipt and the Dashboard will all go back to how they were before this payment.' } : null}
+        onConfirm={reason => {
+          if (!pendingPayDelete) return;
+          const res = reversePayments(dispatch, state, pendingPayDelete.invoiceId, [pendingPayDelete.payment.id], reason);
+          if (res.updatedInvoice && selected?.id === res.updatedInvoice.id) setSelected(res.updatedInvoice);
+          toast(res.incomplete > 0
+            ? { title: 'Payment removed', description: 'Some Working Capital lines could not be matched automatically. Please check the Working Capital ledger.' }
+            : { title: 'Payment removed', description: 'All figures reverted' });
+          setPendingPayDelete(null);
+        }}
+        onCancel={() => setPendingPayDelete(null)}
+      />
     </div>
   );
 }
@@ -1488,7 +1609,7 @@ function BillSettingsView({ settings, dispatch, toast }: { settings: BillingSett
 
 // ─── Receipts View ────────────────────────────────────────────────────────────
 
-function ReceiptsView({ receipts, clients, billing, dispatch, toast, openPreview }: any) {
+function ReceiptsView({ receipts, clients, billing, state, dispatch, toast, openPreview }: any) {
   const [selected, setSelected] = useState<BillingDocument | null>(null);
   const [editingReceipt, setEditingReceipt] = useState<BillingDocument | null>(null);
   const [editForm, setEditForm] = useState({ notes: '', projectName: '', issueDate: '' });
@@ -1499,9 +1620,22 @@ function ReceiptsView({ receipts, clients, billing, dispatch, toast, openPreview
   const avatarColors = ['bg-primary/20 text-primary','bg-blue-500/20 text-blue-400','bg-amber-500/20 text-amber-400','bg-purple-500/20 text-purple-400','bg-pink-500/20 text-pink-400'];
   const avatarColor = (id: string) => avatarColors[id?.charCodeAt(0) % avatarColors.length] || avatarColors[0];
 
-  const del = (doc: BillingDocument) => setPendingDelete({ id: doc.id, label: 'Receipt', docNumber: doc.number, docType: doc.type });
+  const del = (doc: BillingDocument) => {
+    const src = billing.documents.find((d: BillingDocument) => d.id === (doc as any).sourceInvoiceId);
+    const detail = src && doc.payments.length > 0
+      ? `Deleting this receipt undoes its ${doc.payments.length} payment${doc.payments.length !== 1 ? 's' : ''} on ${src.number}:\n` +
+        doc.payments.map((p: BillingPayment) => `• ${p.date}: ${fmtAmt(p.amount, p.currency)}`).join('\n') +
+        '\nThe invoice balance, Working Capital, Retained Profit and the Dashboard go back to how they were.'
+      : undefined;
+    setPendingDelete({ id: doc.id, label: 'Receipt', docNumber: doc.number, docType: doc.type, detail, requireReason: true });
+  };
   const confirmDelete = (reason: string) => {
     if (!pendingDelete) return;
+    const rcp = receipts.find((r: BillingDocument) => r.id === pendingDelete.id);
+    const srcId = (rcp as any)?.sourceInvoiceId;
+    if (rcp && srcId && rcp.payments.length > 0) {
+      reversePayments(dispatch, state, srcId, rcp.payments.map((p: BillingPayment) => p.id), reason, { audit: false });
+    }
     dispatch({ type: 'BILLING_DELETE_DOCUMENT', payload: pendingDelete.id });
     dispatch({ type: 'ADD_NOTIFICATION', payload: { id: 'del-' + genId(), type: 'record_deleted', title: 'Receipt ' + pendingDelete.docNumber + ' deleted', message: reason.trim() || 'No reason provided', createdAt: new Date().toISOString(), read: false, dismissed: false, actionData: { docType: pendingDelete.docType, docNumber: pendingDelete.docNumber } } });
     if (selected?.id === pendingDelete.id) setSelected(null);
@@ -2611,7 +2745,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Other': 'bg-slate-400',
 };
 
-function ExpensesView({ expenses, billing, dispatch, toast }: { expenses: Expense[]; clients: BillingClient[]; billing: any; state: any; dispatch: any; toast: any }) {
+function ExpensesView({ expenses, billing, state, dispatch, toast }: { expenses: Expense[]; clients: BillingClient[]; billing: any; state: any; dispatch: any; toast: any }) {
   const clients: BillingClient[] = billing.clients;
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -2693,14 +2827,33 @@ function ExpensesView({ expenses, billing, dispatch, toast }: { expenses: Expens
     setShowForm(true);
   };
 
+  const [pendingCostDelete, setPendingCostDelete] = useState<Expense | null>(null);
   const del = (id: string) => {
-    if (confirm('Delete project cost?')) {
-      const exp = expenses.find((e: Expense) => e.id === id);
-      if (exp?.profitDeduction !== undefined) dispatch({ type: 'ADD_RETAINED_PROFIT', payload: exp.profitDeduction });
-      dispatch({ type: 'EXPENSE_DELETE', payload: id });
-      if (selected?.id === id) setSelected(null);
-      toast({ title: 'Project cost deleted' });
+    const exp = expenses.find((e: Expense) => e.id === id);
+    if (exp) setPendingCostDelete(exp);
+  };
+  const confirmCostDelete = (reason: string) => {
+    const exp = pendingCostDelete;
+    if (!exp) return;
+    if (exp.profitDeduction !== undefined) {
+      // Project-money rule: put the cost back into Retained Profit
+      dispatch({ type: 'ADD_RETAINED_PROFIT', payload: exp.profitDeduction });
+    } else {
+      // Older cost: it also created a Working Capital outflow, so remove that too
+      const wcId = findLegacyExpenseWcTxId(state.wcTransactions || [], exp);
+      if (wcId) dispatch({ type: 'DELETE_WC_TRANSACTION', payload: wcId });
     }
+    dispatch({ type: 'EXPENSE_DELETE', payload: exp.id });
+    dispatch({ type: 'ADD_NOTIFICATION', payload: {
+      id: 'del-' + genId(), type: 'record_deleted',
+      title: 'Project cost removed — ' + exp.description,
+      message: (reason.trim() || 'No reason provided') + ' · ' + exp.currency + ' ' + exp.amount.toLocaleString(),
+      createdAt: new Date().toISOString(), read: false, dismissed: false,
+      actionData: { docType: 'project_cost', docNumber: exp.description },
+    } });
+    if (selected?.id === exp.id) setSelected(null);
+    toast({ title: 'Project cost removed', description: 'Profit figures reverted' });
+    setPendingCostDelete(null);
   };
 
   const sorted = [...expenses].sort((a: Expense, b: Expense) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -2722,6 +2875,11 @@ function ExpensesView({ expenses, billing, dispatch, toast }: { expenses: Expens
 
   return (
     <div className="space-y-4">
+      <DeleteReasonDialog
+        pending={pendingCostDelete ? { id: pendingCostDelete.id, label: 'Project Cost', docNumber: pendingCostDelete.description + ' (' + pendingCostDelete.currency + ' ' + pendingCostDelete.amount.toLocaleString() + ')', docType: 'project_cost', requireReason: true, detail: pendingCostDelete.profitDeduction !== undefined ? 'The amount goes back into Retained Profit and the Dashboard profit.' : 'This older cost also removes its Working Capital outflow.' } : null}
+        onConfirm={confirmCostDelete}
+        onCancel={() => setPendingCostDelete(null)}
+      />
       <div>
         <h2 className="text-sm font-medium">Project Costs</h2>
         <p className="text-xs text-muted-foreground mt-0.5">Costs incurred to deliver a project. Paid from the project's money: they reduce profit and do not touch Working Capital.</p>
@@ -2779,6 +2937,18 @@ function ExpensesView({ expenses, billing, dispatch, toast }: { expenses: Expens
                 </Select>
               </div>
             </div>
+            {(() => {
+              const linked: any = invoices.find((i: BillingDocument) => i.id === form.invoiceId);
+              const amt = parseFloat(form.amount || '0') || 0;
+              const rate = form.currency === 'MWK' ? 1 : (linked?.exchangeRate || 1);
+              return amt > 0 ? (
+                <div className="p-2 rounded border border-primary/30 bg-primary/5 text-xs">
+                  Recording <span className="font-semibold text-foreground">{form.currency} {amt.toLocaleString()}</span>
+                  {form.currency !== 'MWK' && <> = <span className="font-semibold text-primary">MK {Math.round(amt * rate).toLocaleString()}</span> at the invoice rate of {Number(rate).toLocaleString()}</>}
+                  {linked && form.currency !== linked.currency && <span className="text-amber-400"> (invoice is in {linked.currency})</span>}
+                </div>
+              ) : null;
+            })()}
             <div className="p-2 bg-primary/5 border border-primary/20 rounded text-xs text-muted-foreground">This cost is paid from the project's money. It reduces Retained Profit and does not touch Working Capital.</div>
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" size="sm" onClick={reset}>Cancel</Button>
@@ -2860,8 +3030,9 @@ function ExpensesView({ expenses, billing, dispatch, toast }: { expenses: Expens
 
 // ─── Retainer / Deposit View ─────────────────────────────────────────────────
 
-function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
+function RetainerView({ invoices, clients, billing, state, dispatch, toast }: any) {
   const [payingInvoice, setPayingInvoice] = useState<BillingDocument | null>(null);
+  const [pendingPayDelete, setPendingPayDelete] = useState<{ invoiceId: string; payment: BillingPayment; invoiceNumber: string } | null>(null);
   const [payForm, setPayForm] = useState({ amount: '', currency: 'MWK' as BillingCurrency, exchangeRate: '1', method: 'Bank Transfer', reference: '', date: new Date().toISOString().slice(0,10) });
 
   // Only show invoices with partial payments or no payments (active retainer/deposit situations)
@@ -2887,14 +3058,14 @@ function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
     // ── 1. WC inflow for audit trail ──
     const retWcClient = clients.find((c: BillingClient) => c.id === payingInvoice.clientId);
     const retClientLabel = retWcClient?.name || 'Client';
-    dispatch({ type: 'ADD_WC_TRANSACTION', payload: { id: 'wc-' + genId(), date: payment.date, type: 'inflow', category: 'client_payment', amount: payment.mwkEquivalent, description: retClientLabel + ' — ' + payingInvoice.number + (payment.reference ? ' · ' + payment.reference : ''), reference: payment.reference, balanceAfter: 0, autoGenerated: true } });
+    dispatch({ type: 'ADD_WC_TRANSACTION', payload: { id: 'wc-' + genId(), date: payment.date, type: 'inflow', category: 'client_payment', paymentId: payment.id, amount: payment.mwkEquivalent, description: retClientLabel + ' — ' + payingInvoice.number + (payment.reference ? ' · ' + payment.reference : ''), reference: payment.reference, balanceAfter: 0, autoGenerated: true } });
 
     // ── 2. WC outflow → Retained Profit (100% of every payment) ──
     dispatch({ type: 'ADD_WC_TRANSACTION', payload: {
       id: 'wc-cf-' + genId(), date: payment.date, type: 'outflow', category: 'client_to_retained',
       amount: payment.mwkEquivalent,
       description: 'To Retained Profit — ' + payingInvoice.number,
-      reference: payingInvoice.number, balanceAfter: 0, autoGenerated: true,
+      reference: payingInvoice.number, paymentId: payment.id, balanceAfter: 0, autoGenerated: true,
     }});
 
     const existingReceipt = billing.documents.find((d: BillingDocument) => d.type === 'receipt' && (d as any).sourceInvoiceId === payingInvoice.id);
@@ -2931,35 +3102,20 @@ function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
 
       {/* Payment modal */}
       {payingInvoice && (
-        <Card className="bg-card border-primary/30 border">
-          <CardHeader className="pb-3"><CardTitle className="text-sm">Record Payment — {payingInvoice.number}</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs">Amount</Label><Input type="number" value={payForm.amount} onChange={e => setPayForm(p => ({...p, amount: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
-              <div className="space-y-1"><Label className="text-xs">Currency</Label>
-                <Select value={payForm.currency} onValueChange={v => setPayForm(p => ({...p, currency: v as BillingCurrency}))}>
-                  <SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              {payForm.currency !== 'MWK' && <div className="space-y-1"><Label className="text-xs">Rate to MWK</Label><Input type="number" value={payForm.exchangeRate} onChange={e => setPayForm(p => ({...p, exchangeRate: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>}
-              <div className="space-y-1"><Label className="text-xs">Date</Label><Input type="date" value={payForm.date} onChange={e => setPayForm(p => ({...p, date: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
-              <div className="space-y-1"><Label className="text-xs">Method</Label>
-                <Select value={payForm.method} onValueChange={v => setPayForm(p => ({...p, method: v}))}>
-                  <SelectTrigger className="bg-secondary border-input h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">{['Bank Transfer','Mobile Money','Cash','Cheque','Other'].map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1"><Label className="text-xs">Reference</Label><Input value={payForm.reference} onChange={e => setPayForm(p => ({...p, reference: e.target.value}))} className="bg-secondary border-input h-8 text-sm" /></div>
-            </div>
-            {payForm.currency !== 'MWK' && payForm.amount && <div className="text-xs text-muted-foreground">MWK equivalent: <span className="font-medium">MK {Math.round(parseFloat(payForm.amount||'0') * (parseFloat(payForm.exchangeRate)||1)).toLocaleString()}</span></div>}
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setPayingInvoice(null)}>Cancel</Button>
-              <Button size="sm" onClick={recordPayment}>Record Payment</Button>
-            </div>
-          </CardContent>
-        </Card>
+        <PaymentFormCard invoice={payingInvoice} form={payForm} setForm={setPayForm} onRecord={recordPayment} onCancel={() => setPayingInvoice(null)} />
       )}
+      <DeleteReasonDialog
+        pending={pendingPayDelete ? { id: pendingPayDelete.payment.id, label: 'Payment', docNumber: fmtAmt(pendingPayDelete.payment.amount, pendingPayDelete.payment.currency) + ' on ' + pendingPayDelete.invoiceNumber, docType: 'payment', requireReason: true, detail: 'The invoice balance, Working Capital, Retained Profit, the receipt and the Dashboard will all go back to how they were before this payment.' } : null}
+        onConfirm={reason => {
+          if (!pendingPayDelete) return;
+          const res = reversePayments(dispatch, state, pendingPayDelete.invoiceId, [pendingPayDelete.payment.id], reason);
+          toast(res.incomplete > 0
+            ? { title: 'Payment removed', description: 'Some Working Capital lines could not be matched automatically. Please check the Working Capital ledger.' }
+            : { title: 'Payment removed', description: 'All figures reverted' });
+          setPendingPayDelete(null);
+        }}
+        onCancel={() => setPendingPayDelete(null)}
+      />
 
       {activeInvoices.length === 0 ? (
         <div className="text-center text-muted-foreground text-sm py-12">
@@ -3031,9 +3187,12 @@ function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
                   {inv.payments.length > 0 && (
                     <div className="space-y-0.5 border-t border-border pt-2">
                       {inv.payments.map((p: BillingPayment) => (
-                        <div key={p.id} className="flex justify-between text-[10px] text-muted-foreground">
+                        <div key={p.id} className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                           <span>{p.date} · {p.method}{p.reference ? ' · ' + p.reference : ''}</span>
-                          <span className="text-primary">{fmtAmt(p.amount, p.currency)}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-primary">{fmtAmt(p.amount, p.currency)}</span>
+                            <button type="button" title="Delete this payment" className="text-muted-foreground hover:text-destructive" onClick={() => setPendingPayDelete({ invoiceId: inv.id, payment: p, invoiceNumber: inv.number })}><Trash2 className="w-3 h-3" /></button>
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -3044,7 +3203,7 @@ function RetainerView({ invoices, clients, billing, dispatch, toast }: any) {
                     <Button size="sm" variant="outline" className="flex-1 text-xs h-8 gap-1" onClick={() => sendReminder(inv)}>
                       <Mail className="w-3 h-3" />{paid === 0 ? 'Request Deposit' : 'Request Balance'}
                     </Button>
-                    <Button size="sm" className="flex-1 text-xs h-8 gap-1" onClick={() => setPayingInvoice(inv)}>
+                    <Button size="sm" className="flex-1 text-xs h-8 gap-1" onClick={() => { setPayingInvoice(inv); setPayForm(payFormFor(inv)); }}>
                       <Check className="w-3 h-3" />{paid === 0 ? 'Record Deposit' : 'Record Payment'}
                     </Button>
                   </div>
