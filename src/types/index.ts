@@ -361,6 +361,17 @@ export interface AppNotification {
 }
 
 // === APP STATE ===
+export type TrashKind = 'payment' | 'project_cost' | 'invoice' | 'document';
+
+export interface TrashItem {
+  id: string;
+  kind: TrashKind;
+  title: string;
+  reason: string;
+  deletedAt: string;
+  data: any; // snapshot needed to restore it (payments + invoice id, an expense, or a whole document)
+}
+
 export interface AppState {
   members: TeamMember[];
   projects: Project[];
@@ -371,6 +382,7 @@ export interface AppState {
   wcTransactions: WCTransaction[];
   wcBalance: number;
   retainedProfit: number; // cumulative company contributions minus profit transfers
+  trash?: TrashItem[];    // deleted payments, costs and documents that can be restored
   // Bonus Bank (separate from WC — funded by 40% bonus pools, pays out member bonuses)
   bonusBankBalance: number;
   bonusBankTransactions: BonusBankTransaction[];

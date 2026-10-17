@@ -57,6 +57,7 @@ const BILLING_SUB_NAV: { id: BillingView; label: string; group: 'Sales' | 'Finan
   { id: 'retainer',      label: 'Retainers',     group: 'Finance' },
   { id: 'recurring',     label: 'Recurring',     group: 'Finance' },
   { id: 'tax',           label: 'Tax Report',    group: 'Finance' },
+  { id: 'trash',         label: 'Deleted items', group: 'Other' },
   { id: 'bill-settings', label: 'Settings',      group: 'Other' },
 ];
 

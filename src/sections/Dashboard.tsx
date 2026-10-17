@@ -1,4 +1,5 @@
 import { monthProfit } from '@/lib/profit';
+import { Figure } from '@/components/ui/figure';
 import { useMemo, useState } from 'react';
 import {
   Wallet,
@@ -14,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApp } from '@/hooks/useAppState';
 import { motion } from 'framer-motion';
 import { StatCard } from '@/components/ui/stat-card';
-import { AnimatedNumber } from '@/components/ui/animated-number';
 import { DeltaPill } from '@/components/ui/delta-pill';
 import { CashFlowChart } from '@/components/ui/cash-flow-chart';
 import { ActivityFeed } from '@/components/ui/activity-feed';
@@ -229,23 +229,19 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Received (Month)</p>
-                      <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
-                        <Wallet className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <DeltaPill value={metrics.receivedDelta} size="xs" />
+                        <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+                          <Wallet className="w-3.5 h-3.5" />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
-                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap text-primary">
-                        <AnimatedNumber value={metrics.totalReceivedThisMonth} format={formatCurrency} />
-                      </p>
-                      <DeltaPill value={metrics.receivedDelta} size="xs" />
+                    <div className="mt-3 min-w-0">
+                      <Figure value={metrics.totalReceivedThisMonth} format={formatCurrency} className="text-primary" />
                     </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-[11px] text-blue-400/70 uppercase tracking-wider">Invoiced</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-semibold tabular text-blue-400 whitespace-nowrap">{formatCurrency(metrics.totalInvoicedThisMonth)}</span>
-                        <DeltaPill value={metrics.invoicedDelta} size="xs" />
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-blue-400/80 mt-2 whitespace-nowrap truncate" title={'Invoiced this month: ' + formatCurrency(Math.round(metrics.totalInvoicedThisMonth))}>
+                      Invoiced <span className="font-semibold tabular">{formatCurrency(Math.round(metrics.totalInvoicedThisMonth))}</span>
+                    </p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -256,15 +252,15 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Profit (Month)</p>
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center flex-shrink-0">
-                        <Briefcase className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <DeltaPill value={metrics.retainedDelta} size="xs" />
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center flex-shrink-0">
+                          <Briefcase className="w-3.5 h-3.5" />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-baseline justify-between gap-2 mt-3 flex-wrap">
-                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap text-amber-400">
-                        <AnimatedNumber value={metrics.retainedThisMonth} format={formatCurrency} />
-                      </p>
-                      <DeltaPill value={metrics.retainedDelta} size="xs" />
+                    <div className="mt-3 min-w-0">
+                      <Figure value={metrics.retainedThisMonth} format={formatCurrency} className="text-amber-400" />
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-2">Payments received minus project costs</p>
                   </CardContent>
