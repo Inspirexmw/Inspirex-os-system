@@ -141,7 +141,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
 
   return (
     <div className="space-y-6">
-      {/* HERO GREETING */}
+      {/* DASHBOARD HEADER — compact, action-led workspace */}
       {(() => {
         const founder = (state.members || []).find(m => m.type === 'Founder' && m.isActive);
         const firstName = founder?.name?.split(' ')[0] || state.settings.companyName?.split(' ')[0] || 'there';
@@ -149,29 +149,29 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
         const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
         const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         return (
-          <div className="relative overflow-hidden rounded-2xl px-7 py-7 bg-gradient-to-br from-primary/[0.07] via-card to-card">
-            <div className="absolute -top-10 -right-10 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-            <div className="relative flex items-start justify-between flex-wrap gap-6">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight">
-                  {greeting}, <span className="text-primary">{firstName}</span> 👋
-                </h1>
-                <p className="text-muted-foreground text-sm mt-2">{dateStr}</p>
+          <section className="inspirex-dashboard-header mb-1">
+            <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-5">
+              <div className="min-w-0">
+                <div className="inspirex-section-label mb-2">Studio overview <span className="mx-1.5 opacity-40">/</span> {dateStr}</div>
+                <h1 className="inspirex-page-heading text-3xl md:text-[34px] font-semibold leading-tight">{greeting}, <span className="text-primary">{firstName}</span></h1>
+                <p className="text-sm text-muted-foreground mt-2">Here's how your studio is doing today.</p>
               </div>
-              <div className="flex gap-1 bg-secondary/40 p-1 rounded-xl">
-                {(['operations', 'billing'] as const).map(tab => (
-                  <button key={tab} onClick={() => setDashTab(tab)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
-                      dashTab === tab
-                        ? 'bg-card text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}>
-                    {tab === 'operations' ? '⚙ Operations' : '💼 Billing'}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-card p-1.5">
+                  {(['operations', 'billing'] as const).map(tab => (
+                    <button key={tab} onClick={() => setDashTab(tab)}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all capitalize ${dashTab === tab ? 'bg-secondary text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                      {tab === 'operations' ? 'Operations' : 'Billing'}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => onViewChange?.('billing')} className="inspirex-quick-action inspirex-quick-action-primary">
+                  <FilePlus className="w-3.5 h-3.5" /> Open Billing
+                </button>
               </div>
             </div>
-          </div>
+            <div className="mt-6 h-px bg-gradient-to-r from-border via-border/70 to-transparent" />
+          </section>
         );
       })()}
 
@@ -218,7 +218,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
       {dashTab === 'operations' && (
         <>
           {/* STAT ROW: full width, four compact cards */}
-          <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <motion.div variants={staggerGrid} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 dashboard-metric-grid">
             <motion.div variants={fadeUpItem}>
               <StatCard
                 title="Received"
@@ -244,6 +244,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             <motion.div variants={fadeUpItem}>
               <StatCard
                 title="Working Capital"
+                tone="blue"
                 icon={Wallet}
                 numericValue={state.wcBalance || 0}
                 format={formatCurrency}
@@ -254,6 +255,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             <motion.div variants={fadeUpItem}>
               <StatCard
                 title="Retained Profit"
+                tone="purple"
                 icon={PiggyBank}
                 numericValue={metrics.retainedProfit}
                 format={formatCurrency}
@@ -262,11 +264,11 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             </motion.div>
           </motion.div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(290px,.8fr)] gap-5 dashboard-content-grid">
           {/* MAIN COLUMN */}
-          <div className="space-y-6 min-w-0">
+          <div className="space-y-5 min-w-0">
             {/* CASH FLOW */}
-            <Card className="bg-card border-border">
+            <Card className="inspirex-panel bg-card border-border">
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-sm font-medium">Cash Flow</CardTitle>
@@ -283,7 +285,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             </Card>
 
             {/* RECENT INVOICES */}
-            <Card className="bg-card border-border">
+            <Card className="inspirex-panel bg-card border-border">
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-sm font-medium">Recent Invoices</CardTitle>
@@ -337,10 +339,10 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
           </div>
 
           {/* RIGHT RAIL */}
-          <div className="space-y-5 xl:sticky xl:top-20 xl:self-start">
+          <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
             <NextStepsCard steps={nextSteps} subtitle="Smart suggestions based on your data" />
 
-            <Card className="bg-card border-border">
+            <Card className="inspirex-panel bg-card border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Bell className="w-3.5 h-3.5 text-primary" />
@@ -370,7 +372,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               </CardContent>
             </Card>
 
-            <Card className="bg-card border-border">
+            <Card className="inspirex-panel bg-card border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Activity className="w-3.5 h-3.5 text-primary" />
@@ -388,7 +390,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
 
       {/* BILLING TAB */}
       {dashTab === 'billing' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'Outstanding', value: `MK ${totalOutstanding.toLocaleString()}`, color: 'text-amber-400', sub: `${unpaidInvoices.length} unpaid` },
@@ -396,7 +398,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
               { label: 'Collected (Month)', value: `MK ${collectedThisMonth.toLocaleString()}`, color: 'text-primary', sub: 'This month' },
               { label: 'Pending Quotes', value: pendingQuotes.length, color: 'text-blue-400', sub: 'Awaiting response' },
             ].map(({ label, value, color, sub }) => (
-              <Card key={label} className="bg-card border-border">
+              <Card key={label} className={`inspirex-metric ${label === 'Outstanding' ? 'inspirex-metric--amber' : label === 'Overdue' ? 'border-destructive/30' : label === 'Collected (Month)' ? 'inspirex-metric--green' : 'inspirex-metric--blue'} bg-card border-border`}>
                 <CardContent className="p-5">
                   <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
                   <div className={`text-2xl font-semibold ${color}`}>{value}</div>
@@ -406,7 +408,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
             ))}
           </div>
 
-          <Card className="bg-card border-border">
+          <Card className="inspirex-panel bg-card border-border">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-medium">Unpaid Invoices</CardTitle>
               <button onClick={() => onViewChange?.('billing')} className="text-xs text-primary hover:underline">Go to Billing →</button>
@@ -444,7 +446,7 @@ export function Dashboard({ onViewChange }: { onViewChange?: (view: import('@/ty
           </Card>
 
           {pendingQuotes.length > 0 && (
-            <Card className="bg-card border-border">
+            <Card className="inspirex-panel bg-card border-border">
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Pending Quotes</CardTitle></CardHeader>
               <CardContent>
                 <div className="space-y-2">

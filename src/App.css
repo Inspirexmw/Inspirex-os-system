@@ -1,14 +1,9 @@
-#root {
-  min-height: 100vh;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  text-align: left;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Small shared polish for charts and form controls */
-svg { flex-shrink: 0; }
-input, select, textarea {
-  background-color: rgba(7, 14, 11, .72);
-}
-::placeholder { color: rgba(177, 194, 185, .48); }
+/* InspireX OS — full-width application shell */
+:root { font-synthesis: none; text-rendering: optimizeLegibility; }
+html, body, #root { width: 100%; min-height: 100%; margin: 0; }
+body { min-width: 320px; }
+button, input, select, textarea { font: inherit; }

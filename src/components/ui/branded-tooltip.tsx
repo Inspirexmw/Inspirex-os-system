@@ -10,7 +10,7 @@ interface BrandedTooltipProps {
 export function BrandedTooltip({ active, payload, label, format, titleFormat }: BrandedTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
-    <div className="rounded-xl bg-[#0a0a0a] border border-white/10 shadow-2xl backdrop-blur-md px-3 py-2.5 min-w-[160px]">
+    <div className="rounded-xl bg-popover border border-border shadow-2xl backdrop-blur-md px-3 py-2.5 min-w-[160px]">
       {label && (
         <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">
           {titleFormat ? titleFormat(label) : label}

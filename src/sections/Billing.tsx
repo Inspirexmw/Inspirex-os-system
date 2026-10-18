@@ -101,10 +101,17 @@ export function Billing({ view, onViewChange: setView }: BillingProps) {
   };
 
   return (
-    <div className="animate-fadeIn space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Billing</h1>
-        <p className="text-muted-foreground text-sm mt-1">Quotes, invoices and client records</p>
+    <div className="animate-fadeIn space-y-5 billing-workspace">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-5 border-b border-border/80">
+        <div>
+          <div className="inspirex-section-label mb-2">Studio Lab <span className="mx-1.5 opacity-40">/</span> Finance</div>
+          <h1 className="inspirex-page-heading text-3xl font-semibold">Billing &amp; Finance</h1>
+          <p className="text-muted-foreground text-sm mt-2">Quotes, invoices, client records and project finances.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setView('quotes')} className="inspirex-quick-action inspirex-quick-action-secondary">View quotes</button>
+          <button onClick={() => setView('invoices')} className="inspirex-quick-action inspirex-quick-action-primary"><Plus className="w-3.5 h-3.5" /> Manage invoices</button>
+        </div>
       </div>
 
       {/* Preview Modal */}
@@ -203,10 +210,10 @@ function BillingOverview({ quotes, invoices, clients, billing, setView }: any) {
           { label: 'Collected (Month)', value: 'MK ' + collectedThisMonth.toLocaleString(), color: 'text-primary', icon: CheckCircle },
           { label: 'Pending Quotes', value: pendingQuotes.length, color: 'text-blue-400', icon: FileText },
         ].map(({ label, value, color, icon: Icon }) => (
-          <Card key={label} className="bg-card border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2"><Icon className={`w-4 h-4 ${color}`} /><div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div></div>
-              <div className={`text-xl font-semibold ${color}`}>{value}</div>
+          <Card key={label} className={`inspirex-metric ${label === 'Outstanding' ? 'inspirex-metric--amber' : label === 'Overdue' ? '' : label === 'Collected (Month)' ? 'inspirex-metric--green' : 'inspirex-metric--blue'} bg-card border-border`}>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between gap-2 mb-4"><div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.13em]">{label}</div><div className="w-8 h-8 rounded-lg bg-secondary/80 flex items-center justify-center"><Icon className={`w-4 h-4 ${color}`} /></div></div>
+              <div className={`text-xl sm:text-2xl font-semibold tracking-tight ${color}`}>{value}</div>
             </CardContent>
           </Card>
         ))}

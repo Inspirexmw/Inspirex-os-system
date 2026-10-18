@@ -34,10 +34,10 @@ export function CashFlowChart({ data, format, height = 280 }: CashFlowChartProps
               <stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+          <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--border))" vertical={false} />
           <XAxis
             dataKey="month"
-            stroke="rgba(255,255,255,0.4)"
+            stroke="hsl(var(--muted-foreground))"
             fontSize={11}
             tickLine={false}
             axisLine={false}
@@ -45,14 +45,14 @@ export function CashFlowChart({ data, format, height = 280 }: CashFlowChartProps
             dy={6}
           />
           <YAxis
-            stroke="rgba(255,255,255,0.3)"
+            stroke="hsl(var(--muted-foreground))"
             fontSize={11}
             tickLine={false}
             axisLine={false}
             tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : `${v}`}
             width={48}
           />
-          <Tooltip content={<BrandedTooltip format={format} titleFormat={monthLabel} />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '3 3' }} />
+          <Tooltip content={<BrandedTooltip format={format} titleFormat={monthLabel} />} cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '3 3' }} />
           <Area type="monotone" dataKey="retainedProfit" name="Retained Profit" stroke="#a78bfa" strokeWidth={2} fill="url(#ar-rp)" animationDuration={900} />
           <Area type="monotone" dataKey="wc"             name="WC Balance"   stroke="#73F764" strokeWidth={2.5} fill="url(#ar-wc)" animationDuration={900} />
         </AreaChart>

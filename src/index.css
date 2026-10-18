@@ -4,41 +4,87 @@
 
 @layer base {
   :root {
-    --background: 160 18% 4%;
-    --foreground: 150 12% 94%;
-    --card: 160 12% 7%;
-    --card-foreground: 150 12% 94%;
-    --popover: 160 12% 9%;
+    --background: 0 0% 4.5%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 7.5%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 10%;
     --popover-foreground: 0 0% 93%;
-    --primary: 153 100% 58%;
+    --primary: 114 85% 64%;
     --primary-foreground: 0 0% 4%;
-    --secondary: 160 9% 12%;
+    --secondary: 0 0% 11%;
     --secondary-foreground: 0 0% 93%;
-    --muted: 160 10% 10%;
-    --muted-foreground: 155 7% 58%;
-    --accent: 153 100% 58%;
+    --muted: 0 0% 9%;
+    --muted-foreground: 0 0% 46%;
+    --accent: 114 85% 64%;
     --accent-foreground: 0 0% 4%;
     --destructive: 0 65% 58%;
     --destructive-foreground: 0 0% 98%;
-    --border: 155 30% 75% / 0.10;
-    --input: 155 30% 75% / 0.13;
-    --ring: 153 100% 58%;
-    --radius: 0.75rem;
+    --border: 0 0% 100% / 0.07;
+    --input: 0 0% 100% / 0.10;
+    --ring: 114 85% 64%;
+    --radius: 0.9rem;
+    --surface-1: 0 0% 6%;
+    --surface-2: 0 0% 9%;
+    --surface-3: 0 0% 12%;
+    --success: 151 65% 48%;
+    --info: 214 92% 65%;
+    --warning: 38 92% 60%;
+    --purple: 263 82% 75%;
 
-    --sidebar-background: 160 20% 5%;
+    --sidebar-background: 0 0% 6%;
     --sidebar-foreground: 0 0% 93%;
-    --sidebar-primary: 153 100% 58%;
+    --sidebar-primary: 114 85% 64%;
     --sidebar-primary-foreground: 0 0% 4%;
-    --sidebar-accent: 153 100% 58% / 0.10;
+    --sidebar-accent: 114 85% 64% / 0.08;
     --sidebar-accent-foreground: 0 0% 93%;
     --sidebar-border: 0 0% 100% / 0.06;
-    --sidebar-ring: 153 100% 58%;
+    --sidebar-ring: 114 85% 64%;
 
     --chart-1: 114 85% 64%;
     --chart-2: 207 65% 58%;
     --chart-3: 42 70% 52%;
     --chart-4: 0 65% 58%;
     --chart-5: 252 65% 68%;
+  }
+
+  .light {
+    color-scheme: light;
+    --background: 220 14% 96%;
+    --foreground: 222 22% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 22% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 22% 10%;
+    --primary: 114 85% 64%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 222 22% 12%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 9% 42%;
+    --accent: 114 85% 64%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 68% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 87%;
+    --input: 220 13% 82%;
+    --ring: 114 85% 40%;
+    --surface-1: 220 14% 98%;
+    --surface-2: 220 14% 94%;
+    --surface-3: 220 14% 90%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 22% 10%;
+    --sidebar-primary: 114 85% 40%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 114 60% 94%;
+    --sidebar-accent-foreground: 222 22% 10%;
+    --sidebar-border: 220 13% 87%;
+    --sidebar-ring: 114 85% 40%;
+    --chart-1: 114 65% 42%;
+    --chart-2: 214 80% 52%;
+    --chart-3: 38 82% 48%;
+    --chart-4: 0 65% 52%;
+    --chart-5: 263 65% 58%;
   }
 }
 
@@ -48,9 +94,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    background-image: radial-gradient(ellipse at 8% 0%, rgba(0, 232, 145, 0.075), transparent 34%), radial-gradient(ellipse at 100% 75%, rgba(0, 188, 125, 0.035), transparent 30%);
-    background-attachment: fixed;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
   html {
     scroll-behavior: smooth;
@@ -180,59 +224,35 @@ input:focus, select:focus, textarea:focus {
 .bg-status-excellent { background-color: rgba(115, 247, 100, 0.12); }
 
 
-/* InspireX Studio OS — emerald-glass design system */
-:root { color-scheme: dark; }
-::selection { background: rgba(37, 245, 161, .25); color: #f5fff9; }
+/* Premium dashboard surfaces and interactions */
+body { transition: background-color .2s ease, color .2s ease; }
+[data-slot="card"] { border-radius: 16px; box-shadow: 0 1px 0 rgba(255,255,255,.015); }
+.light [data-slot="card"] { box-shadow: 0 2px 8px rgba(17,24,39,.025); }
+[data-slot="card"]:hover { border-color: hsl(var(--border) / .95); }
+.inspirex-page-heading { letter-spacing: -.045em; }
+.inspirex-panel { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 18px; }
+.inspirex-metric { min-height: 126px; border-radius: 17px; position: relative; overflow: hidden; }
+.inspirex-metric::after { content: ''; position: absolute; inset: 0 0 auto; height: 2px; background: var(--metric-accent, #73F764); opacity: .9; }
+.inspirex-metric--green { --metric-accent: #73F764; background: linear-gradient(145deg, rgba(115,247,100,.12), hsl(var(--card)) 58%); }
+.inspirex-metric--blue { --metric-accent: #5794FF; background: linear-gradient(145deg, rgba(87,148,255,.12), hsl(var(--card)) 58%); }
+.inspirex-metric--purple { --metric-accent: #B58AF7; background: linear-gradient(145deg, rgba(181,138,247,.12), hsl(var(--card)) 58%); }
+.inspirex-metric--amber { --metric-accent: #F5B84B; background: linear-gradient(145deg, rgba(245,184,75,.11), hsl(var(--card)) 58%); }
+.light .inspirex-metric--green { background: linear-gradient(145deg, rgba(115,247,100,.16), #fff 65%); }
+.light .inspirex-metric--blue { background: linear-gradient(145deg, rgba(87,148,255,.12), #fff 65%); }
+.light .inspirex-metric--purple { background: linear-gradient(145deg, rgba(181,138,247,.13), #fff 65%); }
+.light .inspirex-metric--amber { background: linear-gradient(145deg, rgba(245,184,75,.14), #fff 65%); }
+.inspirex-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em; color: hsl(var(--muted-foreground)); }
+.inspirex-quick-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
+.inspirex-quick-action:hover { transform: translateY(-1px); }
+.inspirex-quick-action-primary { background: #73F764; color: #081007; border: 1px solid #73F764; }
+.inspirex-quick-action-primary:hover { background: #8afa7d; }
+.inspirex-quick-action-secondary { background: hsl(var(--secondary) / .7); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); }
+.inspirex-quick-action-secondary:hover { background: hsl(var(--secondary)); }
+.light .glass { background: rgba(255,255,255,.88); border-color: rgba(20,20,20,.08); }
+.light .text-primary { color: #2e8b24; }
+.light input:focus, .light select:focus, .light textarea:focus { box-shadow: 0 0 0 3px rgba(115,247,100,.2); }
+@media (max-width: 768px) { .inspirex-metric { min-height: 112px; } }
 
-/* Give shared surfaces the quiet, layered look of the new direction. */
-[data-radix-popper-content-wrapper] { z-index: 80 !important; }
-.card, [class*="rounded-xl"][class*="border"], [class*="rounded-2xl"][class*="border"] {
-  border-color: hsl(var(--border));
-}
-button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
-button { transition-property: background-color, border-color, color, box-shadow, transform; transition-duration: 160ms; }
-
-/* Global surface and chart refinements */
-.bg-card { background-color: rgba(15, 22, 19, .92); }
-.bg-secondary\/40 { background-color: rgba(255,255,255,.035); }
-.border-border { border-color: rgba(168, 226, 199, .105); }
-.text-muted-foreground { color: hsl(var(--muted-foreground)); }
-
-/* Keyboard focus remains visible against dark surfaces. */
-:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
-
-@media (max-width: 768px) {
-  body { background-image: radial-gradient(ellipse at 50% 0%, rgba(0, 232, 145, .055), transparent 42%); }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
-}
-
-
-/* Layout surfaces inspired by the supplied emerald finance dashboards */
-.inspirex-app-shell { isolation: isolate; }
-.inspirex-sidebar {
-  background: linear-gradient(180deg, rgba(7, 18, 13, .98), rgba(9, 15, 12, .98));
-  border-right-color: rgba(72, 235, 164, .11);
-  box-shadow: 12px 0 40px rgba(0, 0, 0, .12);
-}
-.inspirex-topbar {
-  background: rgba(8, 15, 11, .86);
-  border-bottom-color: rgba(111, 221, 173, .10);
-}
-.inspirex-page-content { width: 100%; }
-.inspirex-nav-item { margin-left: .5rem; margin-right: .5rem; width: calc(100% - 1rem); }
-.inspirex-nav-item:hover { background: rgba(255, 255, 255, .045); }
-.inspirex-nav-item.bg-primary\/12, .inspirex-nav-item[class*="bg-primary"] {
-  box-shadow: inset 0 0 0 1px rgba(36, 244, 158, .09), 0 4px 18px rgba(0, 218, 130, .035);
-}
-.inspirex-metric-card {
-  border-radius: 1rem !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 10px 28px rgba(0,0,0,.10);
-}
-.inspirex-metric-card:hover {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 12px 32px rgba(0,0,0,.18), 0 0 24px rgba(0,232,145,.035);
-  transform: translateY(-1px);
-}
-.inspirex-search-trigger { box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
-.inspirex-search-trigger:focus-visible { border-color: hsl(var(--primary)); }
+.sidebar-logo-light { display: none; }
+.light .sidebar-logo-dark { display: none; }
+.light .sidebar-logo-light { display: block; }

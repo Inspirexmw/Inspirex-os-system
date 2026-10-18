@@ -75,30 +75,23 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
   return (
     <aside 
       className={cn(
-        "inspirex-sidebar fixed left-0 top-0 h-full bg-card border-r border-border flex flex-col transition-all duration-300 z-50",
+        "fixed left-0 top-0 h-full bg-card border-r border-border flex flex-col transition-all duration-300 z-50",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo + collapse button */}
       <div className="p-4 border-b border-border">
-        <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-            <span className="text-primary-foreground font-bold text-sm">IX</span>
-          </div>
-          {!collapsed && (
+        <div className={cn("flex items-center gap-3 min-h-9", collapsed && "justify-center")}>
+          {!collapsed ? (
             <>
-              <div className="overflow-hidden flex-1">
-                <div className="font-semibold text-foreground text-sm tracking-wide">INSPIREX</div>
-                <div className="text-xs text-muted-foreground">OS v2.0</div>
-              </div>
+              <span className="flex-1 min-w-0"><img src="/inspirex-logo.png" alt="InspireX" className="sidebar-logo-dark w-[142px] max-h-8 object-contain object-left" /><img src="/inspirex-logo-light.png" alt="InspireX" className="sidebar-logo-light w-[142px] max-h-8 object-contain object-left" /></span>
               <button onClick={onToggleCollapse} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0" title="Collapse sidebar">
                 <ChevronLeft className="w-4 h-4" />
               </button>
             </>
-          )}
-          {collapsed && (
-            <button onClick={onToggleCollapse} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors" title="Expand sidebar">
-              <ChevronRight className="w-4 h-4" />
+          ) : (
+            <button onClick={onToggleCollapse} className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm" title="Expand sidebar">
+              IX
             </button>
           )}
         </div>
@@ -130,7 +123,7 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
                       }
                     }}
                     className={cn(
-                      "inspirex-nav-item relative w-full flex items-center gap-3 mx-2 px-3 py-2.5 text-sm text-left rounded-xl transition-all duration-200",
+                      "relative w-full flex items-center gap-3 mx-2 px-3 py-2.5 text-sm text-left rounded-lg transition-all duration-200",
                       isActive
                         ? "bg-primary/12 text-primary font-medium"
                         : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
