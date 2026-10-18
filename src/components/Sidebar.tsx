@@ -75,7 +75,7 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
   return (
     <aside 
       className={cn(
-        "fixed left-0 top-0 h-full bg-card border-r border-border flex flex-col transition-all duration-300 z-50",
+        "inspirex-sidebar fixed left-0 top-0 h-full bg-card border-r border-border flex flex-col transition-all duration-300 z-50",
         collapsed ? "w-16" : "w-64"
       )}
     >
@@ -130,7 +130,7 @@ export function Sidebar({ currentView, onViewChange, collapsed, onToggleCollapse
                       }
                     }}
                     className={cn(
-                      "relative w-full flex items-center gap-3 mx-2 px-3 py-2.5 text-sm text-left rounded-lg transition-all duration-200",
+                      "inspirex-nav-item relative w-full flex items-center gap-3 mx-2 px-3 py-2.5 text-sm text-left rounded-xl transition-all duration-200",
                       isActive
                         ? "bg-primary/12 text-primary font-medium"
                         : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",

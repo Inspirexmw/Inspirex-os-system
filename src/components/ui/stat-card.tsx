@@ -30,10 +30,10 @@ interface StatCardProps {
 
 const lift = { y: -2, transition: { duration: 0.15 } };
 
-const TONES: Record<Tone, { text: string; icon: string }> = {
-  default: { text: 'text-foreground', icon: 'bg-secondary text-muted-foreground' },
-  primary: { text: 'text-primary', icon: 'bg-primary/15 text-primary' },
-  amber: { text: 'text-amber-400', icon: 'bg-amber-500/15 text-amber-400' },
+const TONES: Record<Tone, { text: string; icon: string; surface: string }> = {
+  default: { text: 'text-foreground', icon: 'bg-white/[0.06] text-muted-foreground', surface: 'from-slate-300/[0.055] via-card to-card' },
+  primary: { text: 'text-primary', icon: 'bg-primary/15 text-primary', surface: 'from-emerald-400/[0.18] via-emerald-400/[0.045] to-card' },
+  amber: { text: 'text-amber-300', icon: 'bg-amber-400/15 text-amber-300', surface: 'from-amber-300/[0.15] via-amber-400/[0.035] to-card' },
 };
 
 export function StatCard({
@@ -45,18 +45,14 @@ export function StatCard({
   return (
     <motion.div whileHover={lift} className="h-full">
       <Card
-        className={`relative h-full overflow-hidden transition-colors ${
-          accent
-            ? 'bg-gradient-to-br from-primary/15 via-primary/5 to-card border-primary/30'
-            : 'bg-card border-border hover:border-primary/20'
-        } ${onClick ? 'cursor-pointer' : ''}`}
+        className={`inspirex-metric-card relative h-full overflow-hidden transition-all duration-200 bg-gradient-to-br ${t.surface} ${accent ? 'border-primary/30' : 'border-border hover:border-primary/25'} ${onClick ? 'cursor-pointer' : ''}`}
         onClick={onClick}
       >
-        {accent && <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />}
-        <CardContent className="p-4">
+        <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent ${tone === 'amber' ? 'via-amber-300/55' : 'via-primary/55'} to-transparent`} />
+        <CardContent className="relative p-4 sm:p-[18px]">
           {/* Title row: label, change pill, icon */}
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium truncate">{title}</p>
+            <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground font-medium truncate">{title}</p>
             <div className="flex items-center gap-1.5 flex-shrink-0">
               {delta !== undefined && <DeltaPill value={delta ?? null} invert={deltaInvert} size="xs" />}
               {Icon && (
@@ -72,7 +68,7 @@ export function StatCard({
             {numericValue !== undefined && format ? (
               <Figure value={numericValue} format={format} className={t.text} />
             ) : (
-              <p className={`text-[26px] font-semibold leading-none tracking-tight tabular whitespace-nowrap ${t.text}`}>
+              <p className={`text-[25px] font-semibold leading-none tracking-tight tabular whitespace-nowrap ${t.text}`}>
                 {numericValue !== undefined ? <AnimatedNumber value={numericValue} format={format} /> : value}
               </p>
             )}

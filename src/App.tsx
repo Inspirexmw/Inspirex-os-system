@@ -422,7 +422,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="inspirex-app-shell min-h-screen bg-background text-foreground">
       <Sidebar
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -433,12 +433,12 @@ function AppContent() {
       />
       {/* Fixed top bar */}
       <div
-        className="fixed top-0 right-0 z-40 h-14 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 gap-3 transition-all duration-300"
+        className="inspirex-topbar fixed top-0 right-0 z-40 h-14 bg-card/85 backdrop-blur-xl border-b border-border flex items-center justify-between px-6 gap-3 transition-all duration-300"
         style={{ left: sidebarCollapsed ? '4rem' : '16rem' }}
       >
         <button
           onClick={() => setPaletteOpen(true)}
-          className="flex items-center gap-2 px-3 h-9 rounded-lg bg-secondary/40 border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all text-sm w-72 max-w-full"
+          className="inspirex-search-trigger flex items-center gap-2 px-3 h-9 rounded-xl bg-white/[0.035] border border-border/70 text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all text-sm w-72 max-w-full"
         >
           <Search className="w-3.5 h-3.5" />
           <span className="flex-1 text-left">Search or jump to…</span>
@@ -456,7 +456,7 @@ function AppContent() {
           sidebarCollapsed ? 'ml-16' : 'ml-64'
         }`}
       >
-        <div className="p-8 max-w-7xl mx-auto pt-20 pb-24">
+        <div className="inspirex-page-content p-7 lg:p-8 max-w-[1600px] mx-auto pt-20 pb-24">
           <PageTransition pageKey={currentView + (currentView === 'billing' ? ':' + billingView : '')}>
             {renderView()}
           </PageTransition>
